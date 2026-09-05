@@ -1,0 +1,18 @@
+{
+  "profiles": [
+    {
+      "id": "aesthetic-core-v1",
+      "name": "画面美学基础分析",
+      "version": "1.0.0",
+      "dimensions": [
+        {"code": "composition", "label": "构图"},
+        {"code": "color", "label": "色彩"},
+        {"code": "lighting", "label": "光影"},
+        {"code": "space", "label": "空间"},
+        {"code": "style", "label": "风格"}
+      ],
+      "provider": "mock",
+      "pipeline_version": "0.1.0-mock"
+    }
+  ]
+}
