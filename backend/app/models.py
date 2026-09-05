@@ -1,0 +1,101 @@
+from datetime import datetime, timezone
+from enum import StrEnum
+from typing import Any, Literal
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class JobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class Capability(BaseModel):
+    code: str
+    status: Literal["available", "not_implemented"]
+    version: str | None = None
+
+
+class AnalysisDimensionProfile(BaseModel):
+    code: str
+    label: str
+
+
+class AnalysisProfile(BaseModel):
+    id: str
+    name: str
+    version: str
+    dimensions: list[AnalysisDimensionProfile]
+    provider: str
+    pipeline_version: str
+
+
+class Asset(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    original_filename: str
+    mime_type: str
+    size_bytes: int
+    status: Literal["ready"] = "ready"
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class AnalysisTarget(BaseModel):
+    type: Literal["asset"]
+    id: UUID
+
+
+class AnalysisJobCreate(BaseModel):
+    target: AnalysisTarget
+    analysis_profile_id: str
+    requested_outputs: list[Literal["features", "aesthetic_analysis", "evidence"]]
+
+
+class AnalysisJob(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    target: AnalysisTarget
+    analysis_profile_id: str
+    requested_outputs: list[str]
+    status: JobStatus = JobStatus.QUEUED
+    progress_stage: str = "queued"
+    progress_percent: int = 0
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class DimensionResult(BaseModel):
+    code: str
+    label: str
+    observation: str
+    interpretation: str
+    confidence: float = Field(ge=0, le=1)
+    evidence_refs: list[str]
+
+
+class AnalysisResult(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    job_id: UUID
+    schema_version: str = "1.0"
+    summary: str
+    dimensions: list[DimensionResult]
+    tags: list[str]
+    provenance: dict[str, Any]
+
+
+class FeedbackCreate(BaseModel):
+    feedback_type: Literal["accept", "edit", "reject", "flag_error"]
+    target_path: str | None = None
+    corrected_value: Any | None = None
+    error_category: str | None = None
+    comment: str | None = None
+
+
+class Feedback(FeedbackCreate):
+    id: UUID = Field(default_factory=uuid4)
+    result_id: UUID
+    created_at: datetime = Field(default_factory=utc_now)
