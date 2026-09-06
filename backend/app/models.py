@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -10,9 +10,10 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class JobStatus(StrEnum):
+class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
+    PARTIAL = "partial"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -85,6 +86,24 @@ class AnalysisResult(BaseModel):
     dimensions: list[DimensionResult]
     tags: list[str]
     provenance: dict[str, Any]
+    features: list["FeatureResult"] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    completion_status: Literal["complete", "partial"] = "complete"
+
+
+class FeatureResult(BaseModel):
+    extractor_code: str
+    extractor_version: str
+    feature_schema_version: str
+    method: str
+    standard: str | None = None
+    status: Literal["succeeded", "failed"]
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    values: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    error_detail: str | None = None
 
 
 class FeedbackCreate(BaseModel):
