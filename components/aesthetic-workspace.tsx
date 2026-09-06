@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_ANALYSIS_PROFILE } from '@/lib/analysis-profile';
 import type { AnalysisResult, AnalysisStage, FeedbackDraft, UploadedAsset } from '@/lib/aesthetic-domain';
 import { MockAnalysisProvider } from '@/lib/mock-analysis-provider';
+import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
+import { ComputationalFeatures } from '@/components/computational-features';
 
 const stageMeta: Record<AnalysisStage, { label: string; progress: number }> = {
   idle: { label: '等待素材', progress: 0 }, ready: { label: '素材已就绪', progress: 8 },
@@ -26,7 +28,7 @@ const navItems = [
   { label: '审美档案', icon: Sparkles, active: false, available: false },
 ];
 
-const provider = new MockAnalysisProvider();
+const provider = typeof window === 'undefined' ? new MockAnalysisProvider() : new ApiAnalysisProvider();
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function createAsset(file: File): Promise<UploadedAsset> {
@@ -125,7 +127,7 @@ export function AestheticWorkspace() {
           <div><p className="text-base font-semibold tracking-tight">AestheticLens</p><p className="text-xs text-muted-foreground">美学评测工作台</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="hidden border-amber-300/25 text-amber-200 sm:inline-flex">Mock Pipeline · 0.1</Badge>
+          <Badge variant="outline" className="hidden border-amber-300/25 text-amber-200 sm:inline-flex">Hybrid Pipeline · 1.0</Badge>
           <Button variant="outline" size="sm" className="border-white/10 bg-white/3"><SlidersHorizontal data-icon="inline-start" />分析配置</Button>
         </div>
       </header>
@@ -166,7 +168,7 @@ export function AestheticWorkspace() {
               <div className="border-t border-white/8 p-4">
                 {error && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/8 px-3 py-2 text-sm text-red-200"><CircleAlert className="size-4" />{error}</div>}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-[220px] flex-1"><Progress value={status.progress} className="[&_[data-slot=progress-indicator]]:bg-amber-300 [&_[data-slot=progress-track]]:bg-white/8"><ProgressLabel className="text-sm">{status.label}</ProgressLabel><ProgressValue>{status.progress}%</ProgressValue></Progress></div>
+                  <div className="min-w-[220px] flex-1"><Progress value={status.progress} className="[&_[data-slot=progress-indicator]]:bg-amber-300 [&_[data-slot=progress-track]]:bg-white/8"><ProgressLabel className="text-sm">{status.label}</ProgressLabel><ProgressValue /></Progress></div>
                   <div className="flex gap-2">{asset && <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={isRunning} className="border-white/10 bg-white/3"><Upload data-icon="inline-start" />更换图片</Button>}<Button onClick={() => void runAnalysis()} disabled={!asset || isRunning} className="bg-amber-300 text-black hover:bg-amber-200">{isRunning ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}{result ? '重新分析' : '开始分析'}</Button></div>
                 </div>
               </div>
@@ -174,7 +176,9 @@ export function AestheticWorkspace() {
 
             <section className="rounded-2xl border border-white/9 bg-card p-4 sm:p-5">
               {!result ? <div className="flex min-h-[520px] flex-col items-center justify-center text-center"><div className="mb-4 flex size-12 items-center justify-center rounded-2xl border border-cyan-300/15 bg-cyan-300/6 text-cyan-200"><MessageSquareText className="size-6" /></div><h2 className="text-lg font-medium">分析结果将在这里展开</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">上传图片后，系统会依次展示任务进度、五维判断、证据和反馈入口。</p></div> : <>
-                <div className="mb-4"><div className="mb-2 flex items-center gap-2"><Badge className="bg-amber-300 text-black">交互 Mock</Badge><span className="font-mono text-xs text-muted-foreground">{result.id.slice(0, 8)}</span></div><h2 className="text-lg font-semibold">{result.summary}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{result.intent}</p></div>
+                <div className="mb-4"><div className="mb-2 flex items-center gap-2"><Badge className="bg-cyan-300 text-black">真实计算 + Mock 语义</Badge>{result.completionStatus === 'partial' && <Badge variant="destructive">部分完成</Badge>}<span className="font-mono text-xs text-muted-foreground">{result.id.slice(0, 8)}</span></div><h2 className="text-lg font-semibold">{result.summary}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{result.intent}</p></div>
+                <ComputationalFeatures features={result.features} />
+                <p className="mb-2 text-xs font-medium text-amber-200">Mock semantic analysis · 以下五维内容仍为交互占位</p>
                 <Tabs defaultValue={result.dimensions[0].code}>
                   <TabsList variant="line" className="w-full justify-start overflow-x-auto border-b border-white/8 pb-2">{result.dimensions.map((dimension) => <TabsTrigger key={dimension.code} value={dimension.code} className="px-3">{dimension.label}</TabsTrigger>)}</TabsList>
                   {result.dimensions.map((dimension) => <TabsContent key={dimension.code} value={dimension.code} className="pt-4"><div className="space-y-4">

@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.main import app
 
@@ -14,8 +17,14 @@ def test_capabilities_expose_available_and_future_modules():
     assert codes["hybrid_retrieval"] == "not_implemented"
 
 
-def test_mock_analysis_contract():
-    upload = client.post("/api/v1/assets", files={"file": ("frame.png", b"fake-png", "image/png")})
+def png_bytes() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (8, 8), (128, 128, 128)).save(output, format="PNG")
+    return output.getvalue()
+
+
+def test_hybrid_analysis_keeps_mock_contract_and_adds_real_features():
+    upload = client.post("/api/v1/assets", files={"file": ("frame.png", png_bytes(), "image/png")})
     assert upload.status_code == 201
     asset_id = upload.json()["id"]
 
@@ -29,5 +38,14 @@ def test_mock_analysis_contract():
 
     result = client.get(f"/api/v1/analysis-jobs/{job_id}/result")
     assert result.status_code == 200
-    assert result.json()["provenance"]["mode"] == "mock"
+    assert result.json()["provenance"]["mode"] == "hybrid"
     assert len(result.json()["dimensions"]) == 5
+    assert result.json()["completion_status"] == "complete"
+    assert len(result.json()["features"]) == 6
+
+
+def test_corrupted_image_is_a_stable_failed_job_error():
+    upload = client.post("/api/v1/assets", files={"file": ("broken.png", b"not-an-image", "image/png")})
+    created = client.post("/api/v1/analysis-jobs", json={"target": {"type": "asset", "id": upload.json()["id"]}, "analysis_profile_id": "aesthetic-core-v1", "requested_outputs": ["features"]})
+    assert created.status_code == 422
+    assert created.json()["detail"] == "IMAGE_DECODE_FAILED"

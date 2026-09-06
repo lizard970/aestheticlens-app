@@ -9,6 +9,7 @@ class Repository(Protocol):
     jobs: dict[UUID, AnalysisJob]
     results: dict[UUID, AnalysisResult]
     feedback: dict[UUID, list[Feedback]]
+    asset_bytes: dict[UUID, bytes]
 
 
 class InMemoryRepository:
@@ -17,3 +18,4 @@ class InMemoryRepository:
         self.jobs: dict[UUID, AnalysisJob] = {}
         self.results: dict[UUID, AnalysisResult] = {}
         self.feedback: dict[UUID, list[Feedback]] = {}
+        self.asset_bytes: dict[UUID, bytes] = {}

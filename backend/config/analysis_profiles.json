@@ -1,4 +1,13 @@
 {
+  "feature_pipeline": {
+    "version": "1.0.0",
+    "working_representation": "sRGB IEC61966-2-1 encoded; linear-light XYZ D65 for computation",
+    "reference_white": "CIE D65, 2-degree observer",
+    "histogram_bins": 32,
+    "analysis_raster": {"max_dimension": 2048, "resampling": "Pillow LANCZOS in colour-managed sRGB", "version": "1.0.0"},
+    "alpha_compositing": {"display_background_srgb": [1.0, 1.0, 1.0], "space": "linear-light XYZ D65", "version": "1.0.0"},
+    "local_contrast": {"scale_fractions": [0.015625, 0.03125, 0.0625, 0.125], "surround_ratio": 2.0, "denominator_floor": 0.0001, "boundary_mode": "reflect"}
+  },
   "profiles": [
     {
       "id": "aesthetic-core-v1",
@@ -12,7 +21,7 @@
         {"code": "style", "label": "风格"}
       ],
       "provider": "mock",
-      "pipeline_version": "0.1.0-mock"
+      "pipeline_version": "1.0.0-hybrid"
     }
   ]
 }

@@ -1,5 +1,20 @@
 export type AnalysisStage = 'idle' | 'ready' | 'extracting' | 'analyzing' | 'building' | 'complete';
 
+export interface FeatureResult {
+  extractor_code: string;
+  extractor_version: string;
+  feature_schema_version: string;
+  method: string;
+  standard: string | null;
+  status: 'succeeded' | 'failed';
+  parameters: Record<string, unknown>;
+  values: Record<string, unknown>;
+  artifacts: Array<Record<string, unknown>>;
+  provenance: Record<string, unknown>;
+  warnings: string[];
+  error_detail: string | null;
+}
+
 export interface UploadedAsset {
   id: string;
   file: File;
@@ -24,10 +39,13 @@ export interface AnalysisResult {
   dimensions: AnalysisDimension[];
   tags: string[];
   provenance: {
-    mode: 'mock';
+    mode: 'mock' | 'hybrid' | 'real';
     profileVersion: string;
     pipelineVersion: string;
   };
+  features: FeatureResult[];
+  warnings: string[];
+  completionStatus: 'complete' | 'partial';
 }
 
 export interface FeedbackDraft {

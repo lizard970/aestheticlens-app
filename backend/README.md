@@ -1,15 +1,18 @@
 # AestheticLens API
 
-阶段 1A 使用内存仓储和明确标识的 Mock 分析器验证 API 契约。`Repository` 与分析服务分离，后续可以替换为 PostgreSQL、对象存储和真实模型 Adapter。
+阶段 1B-01 在内存仓储和 Mock 语义分析器之上增加真实、确定性的 SDR 影调与对比度提取。`Repository`、标准化适配器与提取器注册表彼此分离，后续可以替换存储或增加独立提取器。
+
+方法、限制和引用见 `../docs/tone-contrast-methods.md`。
 
 启动：
 
 ```powershell
-python -m uvicorn app.main:app --reload --app-dir backend
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 测试：
 
 ```powershell
-python -m pytest backend/tests
+python -m pytest
 ```

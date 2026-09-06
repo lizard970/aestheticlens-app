@@ -22,6 +22,7 @@ export class MockAnalysisProvider implements AnalysisProvider {
       })),
       tags: [orientation, '交互原型', '待真实模型分析'],
       provenance: { mode: 'mock', profileVersion: DEFAULT_ANALYSIS_PROFILE.version, pipelineVersion: DEFAULT_ANALYSIS_PROFILE.pipelineVersion },
+      features: [], warnings: [], completionStatus: 'complete',
     };
   }
 }

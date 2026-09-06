@@ -1,14 +1,17 @@
 from uuid import UUID
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import load_analysis_profiles
 from .models import AnalysisJob, AnalysisJobCreate, AnalysisResult, Asset, Capability, Feedback, FeedbackCreate
 from .repositories import InMemoryRepository
 from .services import MockAnalysisService
+from .feature_pipeline import ImageNormalizationError
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], allow_methods=["*"], allow_headers=["*"])
 repository = InMemoryRepository()
 analysis_service = MockAnalysisService(repository)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
@@ -36,6 +39,7 @@ async def create_asset(file: UploadFile = File(...)) -> Asset:
     body = await file.read()
     asset = Asset(original_filename=file.filename or "upload", mime_type=file.content_type, size_bytes=len(body))
     repository.assets[asset.id] = asset
+    repository.asset_bytes[asset.id] = body
     return asset
 
 
@@ -48,7 +52,10 @@ def create_analysis_job(payload: AnalysisJobCreate, idempotency_key: str | None 
         raise HTTPException(status_code=404, detail="ANALYSIS_PROFILE_NOT_FOUND")
     job = AnalysisJob(**payload.model_dump())
     repository.jobs[job.id] = job
-    analysis_service.run(job)
+    try:
+        analysis_service.run(job)
+    except ImageNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return job
 
 
