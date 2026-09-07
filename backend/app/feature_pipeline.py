@@ -591,6 +591,40 @@ class GlobalToneExtractor(BaseExtractor):
         p5, p25, p75, p95 = np.percentile(image.lightness, [5, 25, 75, 95])
         return {"lstar_p95_p05_span": float(p95-p5), "lstar_iqr": float(p75-p25), "lstar_standard_deviation": float(image.lightness.std())}
 
+class TonalOccupancyExtractor(BaseExtractor):
+    code = "tonal_occupancy"
+    method = "Configured operational low-, mid-, and high-lightness bins over CIELAB L*"
+    standard = "CIELAB L* D65/2-degree; application-defined versioned bin boundaries"
+
+    def extract(self, image, config):
+        settings = config["tonal_occupancy"]
+
+        shadow_max = float(settings["shadow_lstar_max"])
+        highlight_min = float(settings["highlight_lstar_min"])
+
+        if shadow_max >= highlight_min:
+            raise ValueError(
+                "shadow_lstar_max must be lower than highlight_lstar_min"
+            )
+
+        lightness = image.lightness
+
+        shadow = lightness <= shadow_max
+        highlight = lightness >= highlight_min
+        midtone = (~shadow) & (~highlight)
+
+        return {
+            "configuration_version": settings["version"],
+            "measurement_space": settings["space"],
+            "boundary_policy": settings["boundary_policy"],
+            "shadow_lstar_max": shadow_max,
+            "highlight_lstar_min": highlight_min,
+            "shadow_share": float(shadow.mean()),
+            "midtone_share": float(midtone.mean()),
+            "highlight_share": float(highlight.mean()),
+            "occupancy_sum": float(shadow.mean() + midtone.mean() + highlight.mean()),
+            "interpretation_limit": "Operational tone bins only; not semantic shadows/highlights or exposure quality",
+        }
 
 class LocalContrastExtractor(BaseExtractor):
     code, method, standard = "multiscale_local_contrast", "Peli-style Gaussian center-surround contrast normalized by local adaptation", "Peli (1990), adapted Gaussian implementation"
@@ -615,23 +649,23 @@ class EndpointExtractor(BaseExtractor):
 class ExtractorRegistry:
     def __init__(self, extractors: list[VisualFeatureExtractor] | None = None):
         self.extractors = extractors or [
-    MetadataExtractor(),
-    LuminanceExtractor(),
-    LightnessExtractor(),
+            MetadataExtractor(),
+            LuminanceExtractor(),
+            LightnessExtractor(),
 
-    ChromaExtractor(),
-    ChromaticOccupancyExtractor(),
-    HueDistributionExtractor(),
-    DominantPaletteExtractor(),
-    WarmCoolDistributionExtractor(),
-    PaletteColorContrastExtractor(),
-    ColorfulnessExtractor(),
+            ChromaExtractor(),
+            ChromaticOccupancyExtractor(),
+            HueDistributionExtractor(),
+            DominantPaletteExtractor(),
+            WarmCoolDistributionExtractor(),
+            PaletteColorContrastExtractor(),
+            ColorfulnessExtractor(),
 
-    GlobalToneExtractor(),
-    LocalContrastExtractor(),
-    EndpointExtractor(),
-]
-    ChromaExtractor(),ChromaticOccupancyExtractor(),HueDistributionExtractor(),
+            GlobalToneExtractor(),
+            LocalContrastExtractor(),
+            EndpointExtractor(),
+            TonalOccupancyExtractor(),
+        ]
 
     def run(self, image: NormalizedImage, config: dict[str, Any]) -> list[FeatureResult]:
         results: list[FeatureResult] = []

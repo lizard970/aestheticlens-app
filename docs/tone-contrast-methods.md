@@ -15,6 +15,7 @@ Alpha is composited against the configured display background in linear-light CI
 - Global tonal contrast reports `L*(P95)-L*(P05)`, interquartile range, and population standard deviation.
 - Multiscale local contrast uses Gaussian center/surround responses. For each configured image-relative scale, `C=|Gσ(Y)-G(rσ)(Y)| / max(G(rσ)(Y), ε)`. It reports RMS energy, median, and P90. Reflect boundaries and a configured denominator floor make the implementation deterministic.
 - Endpoint diagnostics count only source-code pixels exactly black or white where the source mode makes this meaningful. They are not arbitrary “shadow/highlight” regions.
+- Tonal occupancy divides CIELAB `L*` into versioned application bins (`L* <= 20`, `20 < L* < 80`, and `L* >= 80` by the current profile). These boundaries are configurable operational labels for comparison and retrieval, not a CIE definition of semantic shadows/highlights, correct exposure, or aesthetic quality.
 
 Every feature carries extractor/schema versions, actual configuration, normalization provenance, library versions, warnings, and controlled errors. An extractor failure leaves successful sibling results available and makes the aggregate result partial.
 

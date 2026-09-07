@@ -105,6 +105,7 @@ def test_hybrid_analysis_keeps_mock_contract_and_adds_real_features():
         "global_tonal_contrast",
         "multiscale_local_contrast",
         "source_endpoint_occupancy",
+        "tonal_occupancy",
     }
 
     assert required_extractors.issubset(

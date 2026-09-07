@@ -222,3 +222,9 @@ Implemented on `handoff/20260906-tone-contrast`. The public result contract was 
 - Frontend changed-file lint: passed.
 - Frontend production build: `pnpm build` — passed.
 - Full `pnpm lint` still reports pre-existing generated UI-kit accessibility/compiler findings outside this ticket; changed files pass targeted lint.
+
+## Stage 1B-03 operator-approved follow-up
+
+The later operator instruction adds versioned, configurable CIELAB `L*` tonal occupancy (`shadow`, `midtone`, `highlight`) as an operational distribution for comparison and retrieval. This does not reinstate the prohibited arbitrary `Y < 0.2 / Y > 0.8` calculation and does not claim semantic shadows/highlights, correct exposure, low-key photography, or aesthetic quality. The old fake Evidence overlay is removed; real Evidence Builder work remains Stage 1D.
+
+Validation on `feat/20260907-next`: backend 26 passed; frontend 3 passed; TypeScript and production build passed. Changed Stage 1B files pass targeted lint. Full-repository lint still reports pre-existing generated UI-kit accessibility/compiler findings outside the Stage 1B scope.

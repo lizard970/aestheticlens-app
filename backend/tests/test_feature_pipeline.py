@@ -801,3 +801,24 @@ def test_colorfulness_is_higher_for_saturated_colour_than_gray():
             "colorfulness"
         ]
     )
+
+def test_tonal_occupancy_distinguishes_black_gray_and_white():
+    black = np.zeros((16, 16, 3), dtype=np.uint8)
+    gray = np.full((16, 16, 3), 128, dtype=np.uint8)
+    white = np.full((16, 16, 3), 255, dtype=np.uint8)
+
+    black_result = values(black)["tonal_occupancy"]
+    gray_result = values(gray)["tonal_occupancy"]
+    white_result = values(white)["tonal_occupancy"]
+
+    assert black_result["shadow_share"] == pytest.approx(1.0)
+    assert black_result["highlight_share"] == pytest.approx(0.0)
+    assert black_result["occupancy_sum"] == pytest.approx(1.0)
+
+    assert gray_result["midtone_share"] == pytest.approx(1.0)
+    assert gray_result["occupancy_sum"] == pytest.approx(1.0)
+
+    assert white_result["shadow_share"] == pytest.approx(0.0)
+    assert white_result["highlight_share"] == pytest.approx(1.0)
+    assert white_result["occupancy_sum"] == pytest.approx(1.0)
+    assert white_result["configuration_version"] == "1.0.0"

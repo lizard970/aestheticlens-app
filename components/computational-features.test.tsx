@@ -15,6 +15,7 @@ const apiResponse = {
     feature('cie_lightness', { mean: 53.585, median: 52.125, p01: 1, p99: 99 }),
     feature('global_tonal_contrast', { lstar_p95_p05_span: 81.25, lstar_iqr: 42.5, lstar_standard_deviation: 24.75 }),
     feature('multiscale_local_contrast', { scales: [{ scale_fraction: 0.03125, energy_rms: 0.1875 }] }),
+    feature('tonal_occupancy', { configuration_version: '1.0.0', shadow_lstar_max: 20, highlight_lstar_min: 80, shadow_share: 0.45, midtone_share: 0.4, highlight_share: 0.15 }),
   ],
 };
 
@@ -27,6 +28,10 @@ describe('ComputationalFeatures', () => {
     expect(screen.getByText('全局色调跨度 p95-p05')).toBeInTheDocument();
     expect(screen.getByText('81.2500')).toBeInTheDocument();
     expect(screen.getByText('RMS 0.1875')).toBeInTheDocument();
+    expect(screen.getByText('Tone distribution · 明暗层级')).toBeInTheDocument();
+    expect(screen.getByText('45.0%')).toBeInTheDocument();
+    expect(screen.getByText('40.0%')).toBeInTheDocument();
+    expect(screen.getByText('15.0%')).toBeInTheDocument();
   });
 
   it('shows successful values and failed extractors for a partial result', () => {
