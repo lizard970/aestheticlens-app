@@ -6,7 +6,39 @@
     "histogram_bins": 32,
     "analysis_raster": {"max_dimension": 2048, "resampling": "Pillow LANCZOS in colour-managed sRGB", "version": "1.0.0"},
     "alpha_compositing": {"display_background_srgb": [1.0, 1.0, 1.0], "space": "linear-light XYZ D65", "version": "1.0.0"},
-    "local_contrast": {"scale_fractions": [0.015625, 0.03125, 0.0625, 0.125], "surround_ratio": 2.0, "denominator_floor": 0.0001, "boundary_mode": "reflect"}
+    "local_contrast": {"scale_fractions": [0.015625, 0.03125, 0.0625, 0.125], "surround_ratio": 2.0, "denominator_floor": 0.0001, "boundary_mode": "reflect"},
+    "color_analysis": {
+    "chroma_histogram_bins": 32,
+    "chroma_histogram_range": [0.0, 150.0],
+    "achromatic_chroma_floor": 5.0,
+    "hue_histogram_bins": 12,
+
+    "palette": {
+      "cluster_count": 5,
+      "sample_limit": 20000,
+      "min_cluster_share": 0.02,
+      "random_seed": 7,
+      "max_iterations": 40
+    },
+
+    "warm_cool": {
+      "warm_ranges_degrees": [
+        [330.0, 360.0],
+        [0.0, 120.0]
+      ],
+      "cool_ranges_degrees": [
+        [120.0, 330.0]
+      ]
+    },
+
+    "color_contrast": {
+      "metric": "CIEDE2000"
+    },
+
+    "colorfulness": {
+      "method": "Hasler-Susstrunk"
+    }
+  }
   },
   "profiles": [
     {

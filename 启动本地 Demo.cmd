@@ -1,6 +1,5 @@
 @echo off
-setlocal
-cd /d "%~dp0"
+chcp 65001 >nul
 
 where pnpm >nul 2>nul
 if errorlevel 1 (
@@ -15,8 +14,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-
-start "AestheticLens API" cmd /k "cd /d ""%~dp0backend"" ^&^& python -m uvicorn app.main:app --reload --port 8000"
-start "AestheticLens Local Demo" cmd /k "cd /d ""%~dp0"" ^&^& pnpm dev"
-timeout /t 5 /nobreak >nul
+start "AestheticLens API" /D "%~dp0backend" cmd /k python -m uvicorn app.main:app --reload --port 8000
+start "AestheticLens Local Demo" /D "%~dp0" cmd /k pnpm dev
 start "" "http://localhost:3000/"
