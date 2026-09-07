@@ -38,7 +38,14 @@
     "colorfulness": {
       "method": "Hasler-Susstrunk"
     }
-  }
+  },
+    "tonal_occupancy": {
+      "version": "1.0.0",
+      "space": "CIELAB L* (D65, 2-degree observer)",
+      "shadow_lstar_max": 20.0,
+      "highlight_lstar_min": 80.0,
+      "boundary_policy": "shadow <= max; midtone > max and < min; highlight >= min"
+    }
   },
   "profiles": [
     {

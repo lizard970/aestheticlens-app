@@ -134,9 +134,9 @@ export function ColorComputationalFeatures({
         ) : (
           <div className="mt-3 flex flex-wrap gap-3">
             {colors.map((color) => {
-              const hex = String(
-                color.hex_srgb ?? '#000000',
-              );
+              const hex = typeof color.hex_srgb === 'string'
+                ? color.hex_srgb
+                : '#000000';
 
               return (
                 <div

@@ -160,7 +160,6 @@ export function AestheticWorkspace() {
                 {asset ? <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={asset.previewUrl} alt="待分析素材" className="max-h-full max-w-full object-contain shadow-2xl" />
-                  {result && <div className="pointer-events-none absolute inset-[20%_18%_22%_52%] border border-amber-300/80 shadow-[0_0_0_999px_rgba(0,0,0,.08)]"><span className="absolute -top-6 left-0 bg-amber-300 px-2 py-0.5 text-[11px] font-medium text-black">证据区域 · Mock</span></div>}
                 </> : <button type="button" onClick={() => inputRef.current?.click()} className="group flex max-w-md flex-col items-center rounded-2xl border border-dashed border-white/15 px-8 py-12 text-center transition hover:border-amber-300/45 hover:bg-amber-300/4">
                   <span className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground transition group-hover:text-amber-300"><ImagePlus className="size-6" /></span>
                   <span className="font-medium">拖入一张画面，或点击选择文件</span><span className="mt-2 text-sm text-muted-foreground">JPG、PNG、WebP · 本阶段只处理单张图片</span>
