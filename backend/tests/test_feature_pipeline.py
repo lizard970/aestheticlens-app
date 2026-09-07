@@ -3,12 +3,15 @@ from io import BytesIO
 import numpy as np
 import pytest
 from PIL import Image, ImageCms
+from skimage import data
 
 from app.config import load_feature_config
 from app.feature_pipeline import (
+    CompositionGeometryExtractor,
     ExtractorRegistry,
     ImageNormalizationError,
     MetadataExtractor,
+    SpaceStructureExtractor,
     normalize_image,
 )
 from app.models import (
@@ -822,3 +825,63 @@ def test_tonal_occupancy_distinguishes_black_gray_and_white():
     assert white_result["highlight_share"] == pytest.approx(1.0)
     assert white_result["occupancy_sum"] == pytest.approx(1.0)
     assert white_result["configuration_version"] == "1.0.0"
+
+
+@pytest.mark.parametrize("level", [0, 128, 255])
+def test_space_and_composition_extractors_report_uncertainty_for_solid_images(level):
+    image = normalize_image(
+        encoded(np.full((64, 64, 3), level, dtype=np.uint8)),
+        load_feature_config(),
+    )
+    config = load_feature_config()
+
+    space = SpaceStructureExtractor().extract(image, config)
+    composition = CompositionGeometryExtractor().extract(image, config)
+
+    assert space["spatial_complexity"]["score"] == pytest.approx(0.0, abs=1e-6)
+    assert space["empty_space_ratio"] == pytest.approx(1.0)
+    assert space["foreground_background_hint"]["status"] == "uncertain"
+    assert space["depth_layer_hint"]["status"] == "uncertain"
+    assert composition["subject_position_hint"]["status"] == "uncertain"
+    assert composition["visual_center_offset"]["normalized_distance"] is None
+    assert composition["negative_space_ratio"] == pytest.approx(1.0)
+    assert composition["symmetry_score"]["mean"] == pytest.approx(1.0)
+    assert composition["rule_of_thirds_score"]["status"] == "uncertain"
+
+
+def test_space_and_composition_extractors_run_on_ordinary_photo():
+    photo = data.astronaut()
+    image = normalize_image(
+        encoded(photo),
+        load_feature_config(),
+    )
+    config = load_feature_config()
+
+    space = SpaceStructureExtractor().extract(image, config)
+    composition = CompositionGeometryExtractor().extract(image, config)
+
+    assert 0.0 < space["spatial_complexity"]["score"] <= 1.0
+    assert 0.0 <= space["empty_space_ratio"] < 1.0
+    assert space["foreground_background_hint"]["status"] in {
+        "available",
+        "uncertain",
+    }
+    assert space["depth_layer_hint"]["status"] in {
+        "available",
+        "uncertain",
+    }
+    assert composition["subject_position_hint"]["status"] == "available"
+    assert 0.0 <= composition["visual_center_offset"]["normalized_distance"] <= 1.0
+    assert 0.0 <= composition["negative_space_ratio"] <= 1.0
+    assert 0.0 <= composition["symmetry_score"]["mean"] <= 1.0
+    assert 0.0 <= composition["rule_of_thirds_score"]["score"] <= 1.0
+
+
+def test_default_registry_registers_space_and_composition_extractors():
+    extractor_codes = {
+        extractor.code
+        for extractor in ExtractorRegistry().extractors
+    }
+
+    assert "space_structure" in extractor_codes
+    assert "composition_geometry" in extractor_codes

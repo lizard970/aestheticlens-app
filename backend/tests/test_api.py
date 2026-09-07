@@ -102,6 +102,8 @@ def test_hybrid_analysis_keeps_mock_contract_and_adds_real_features():
         "warm_cool_distribution",
         "palette_color_contrast",
         "image_colorfulness",
+        "space_structure",
+        "composition_geometry",
         "global_tonal_contrast",
         "multiscale_local_contrast",
         "source_endpoint_occupancy",
@@ -111,6 +113,25 @@ def test_hybrid_analysis_keeps_mock_contract_and_adds_real_features():
     assert required_extractors.issubset(
         extractor_codes
     )
+
+    by_code = {
+        feature["extractor_code"]: feature
+        for feature in payload["features"]
+    }
+
+    assert {
+        "spatial_complexity",
+        "foreground_background_hint",
+        "depth_layer_hint",
+        "empty_space_ratio",
+    }.issubset(by_code["space_structure"]["values"])
+    assert {
+        "subject_position_hint",
+        "visual_center_offset",
+        "negative_space_ratio",
+        "symmetry_score",
+        "rule_of_thirds_score",
+    }.issubset(by_code["composition_geometry"]["values"])
 
 
 def test_corrupted_image_is_a_stable_failed_job_error():

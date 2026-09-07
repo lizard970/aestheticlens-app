@@ -583,6 +583,405 @@ class ColorfulnessExtractor(BaseExtractor):
         }
 
 
+def _spatial_maps(
+    image: NormalizedImage,
+    config: dict[str, Any],
+) -> dict[str, np.ndarray | float]:
+    settings = config["space_analysis"]
+    luminance = image.luminance
+    gradient_y = (
+        np.gradient(luminance, axis=0)
+        if image.height > 1
+        else np.zeros_like(luminance)
+    )
+    gradient_x = (
+        np.gradient(luminance, axis=1)
+        if image.width > 1
+        else np.zeros_like(luminance)
+    )
+    gradient = np.hypot(gradient_x, gradient_y)
+    sigma = max(
+        float(settings["minimum_sigma_pixels"]),
+        float(settings["local_window_fraction"])
+        * min(image.width, image.height),
+    )
+    local_mean = gaussian_filter(
+        luminance,
+        sigma=sigma,
+        mode=settings["boundary_mode"],
+    )
+    local_second_moment = gaussian_filter(
+        luminance**2,
+        sigma=sigma,
+        mode=settings["boundary_mode"],
+    )
+    local_std = np.sqrt(
+        np.maximum(local_second_moment - local_mean**2, 0.0)
+    )
+    low_information = (
+        gradient
+        <= float(settings["low_information_gradient_max"])
+    ) & (
+        local_std
+        <= float(settings["low_information_local_std_max"])
+    )
+    return {
+        "gradient": gradient,
+        "local_std": local_std,
+        "low_information": low_information,
+        "sigma_pixels": sigma,
+    }
+
+
+def _focus_signal(
+    image: NormalizedImage,
+    config: dict[str, Any],
+) -> np.ndarray:
+    settings = config["space_analysis"]
+    minimum_dimension = min(image.width, image.height)
+    inner_sigma = max(
+        float(settings["minimum_sigma_pixels"]),
+        float(settings["focus_inner_sigma_fraction"])
+        * minimum_dimension,
+    )
+    outer_sigma = max(
+        inner_sigma,
+        float(settings["focus_outer_sigma_fraction"])
+        * minimum_dimension,
+    )
+    inner = gaussian_filter(
+        image.luminance,
+        sigma=inner_sigma,
+        mode=settings["boundary_mode"],
+    )
+    outer = gaussian_filter(
+        image.luminance,
+        sigma=outer_sigma,
+        mode=settings["boundary_mode"],
+    )
+    return np.abs(inner - outer)
+
+
+class SpaceStructureExtractor(BaseExtractor):
+    code = "space_structure"
+    method = "Edge/texture information density and image-relative focus-gradient cues"
+    standard = "Deterministic image-space proxy; no semantic depth or segmentation claim"
+
+    def extract(self, image, config):
+        settings = config["space_analysis"]
+        maps = _spatial_maps(image, config)
+        gradient = maps["gradient"]
+        local_std = maps["local_std"]
+        low_information = maps["low_information"]
+
+        edge_density = float(
+            np.mean(
+                gradient
+                >= float(settings["edge_magnitude_threshold"])
+            )
+        )
+        texture_variation = float(np.mean(local_std))
+        edge_component = float(
+            np.clip(
+                edge_density
+                / float(settings["edge_density_reference"]),
+                0.0,
+                1.0,
+            )
+        )
+        texture_component = float(
+            np.clip(
+                texture_variation
+                / float(settings["texture_variation_reference"]),
+                0.0,
+                1.0,
+            )
+        )
+        edge_weight = float(settings["complexity_edge_weight"])
+        texture_weight = float(
+            settings["complexity_texture_weight"]
+        )
+        complexity = (
+            edge_component * edge_weight
+            + texture_component * texture_weight
+        ) / (edge_weight + texture_weight)
+
+        focus = _focus_signal(image, config)
+        yy, xx = np.indices(focus.shape)
+        center_fraction = float(settings["center_region_fraction"])
+        center = (
+            np.abs((xx + 0.5) / image.width - 0.5)
+            <= center_fraction / 2.0
+        ) & (
+            np.abs((yy + 0.5) / image.height - 0.5)
+            <= center_fraction / 2.0
+        )
+        center_focus = float(np.mean(focus[center]))
+        surround_focus = (
+            float(np.mean(focus[~center]))
+            if np.any(~center)
+            else center_focus
+        )
+        focus_peak = max(center_focus, surround_focus)
+        focus_separation = (
+            abs(center_focus - surround_focus) / focus_peak
+            if focus_peak > 0.0
+            else 0.0
+        )
+        focus_reliable = (
+            focus_peak >= float(settings["focus_signal_floor"])
+            and focus_separation
+            >= float(settings["focus_separation_min"])
+        )
+        foreground_background_hint = {
+            "status": "available" if focus_reliable else "uncertain",
+            "hint": (
+                "center_sharper_than_surround"
+                if focus_reliable and center_focus > surround_focus
+                else "surround_sharper_than_center"
+                if focus_reliable
+                else "undetermined"
+            ),
+            "center_focus_signal": center_focus,
+            "surround_focus_signal": surround_focus,
+            "relative_separation": focus_separation,
+            "uncertainty": (
+                None
+                if focus_reliable
+                else "no_reliable_focus_separation"
+            ),
+        }
+
+        band_count = min(int(settings["depth_band_count"]), image.height)
+        band_names = [
+            "top",
+            "middle",
+            "bottom",
+        ] if band_count == 3 else [f"band_{index + 1}" for index in range(band_count)]
+        band_values = [
+            float(np.mean(part))
+            for part in np.array_split(focus, band_count, axis=0)
+        ]
+        maximum_band = max(band_values)
+        relative_spread = (
+            (maximum_band - min(band_values)) / maximum_band
+            if maximum_band > 0.0
+            else 0.0
+        )
+        depth_reliable = (
+            maximum_band >= float(settings["focus_signal_floor"])
+            and relative_spread
+            >= float(settings["depth_relative_spread_min"])
+        )
+        depth_layer_hint = {
+            "status": "available" if depth_reliable else "uncertain",
+            "hint": (
+                "vertical_focus_gradient_detected"
+                if depth_reliable
+                else "undetermined"
+            ),
+            "sharpest_band": (
+                band_names[int(np.argmax(band_values))]
+                if depth_reliable
+                else None
+            ),
+            "band_focus_signal": dict(zip(band_names, band_values)),
+            "relative_spread": relative_spread,
+            "uncertainty": (
+                None
+                if depth_reliable
+                else "no_reliable_vertical_focus_gradient"
+            ),
+        }
+
+        return {
+            "configuration_version": settings["version"],
+            "spatial_complexity": {
+                "score": float(complexity),
+                "edge_density": edge_density,
+                "texture_variation": texture_variation,
+                "edge_component": edge_component,
+                "texture_component": texture_component,
+            },
+            "foreground_background_hint": foreground_background_hint,
+            "depth_layer_hint": depth_layer_hint,
+            "empty_space_ratio": float(np.mean(low_information)),
+            "interpretation_limit": "Image-space cues only; not semantic foreground/background identity or physical depth",
+        }
+
+
+class CompositionGeometryExtractor(BaseExtractor):
+    code = "composition_geometry"
+    method = "Gradient/texture saliency centroid, low-information occupancy, and mirror similarity"
+    standard = "Deterministic image-space proxy; no aesthetic or emotional judgment"
+
+    def extract(self, image, config):
+        settings = config["composition_analysis"]
+        maps = _spatial_maps(image, config)
+        saliency = (
+            np.asarray(maps["gradient"])
+            * float(settings["saliency_gradient_weight"])
+            + np.asarray(maps["local_std"])
+            * float(settings["saliency_texture_weight"])
+        )
+        sigma = max(
+            float(config["space_analysis"]["minimum_sigma_pixels"]),
+            float(settings["saliency_smoothing_fraction"])
+            * min(image.width, image.height),
+        )
+        saliency = gaussian_filter(
+            saliency,
+            sigma=sigma,
+            mode=config["space_analysis"]["boundary_mode"],
+        )
+        saliency_total = float(np.sum(saliency))
+        saliency_mean = float(np.mean(saliency))
+        peak_to_mean = (
+            float(np.max(saliency)) / saliency_mean
+            if saliency_mean > 0.0
+            else 0.0
+        )
+        reliable = (
+            saliency_mean
+            >= float(settings["saliency_signal_floor"])
+            and peak_to_mean
+            >= float(settings["saliency_peak_to_mean_min"])
+        )
+
+        if reliable:
+            yy, xx = np.indices(saliency.shape)
+            center_x = float(
+                np.sum(((xx + 0.5) / image.width) * saliency)
+                / saliency_total
+            )
+            center_y = float(
+                np.sum(((yy + 0.5) / image.height) * saliency)
+                / saliency_total
+            )
+            lower = float(settings["position_center_min"])
+            upper = float(settings["position_center_max"])
+            horizontal = (
+                "left" if center_x < lower else "right" if center_x > upper else "center"
+            )
+            vertical = (
+                "upper" if center_y < lower else "lower" if center_y > upper else "middle"
+            )
+            subject_hint = {
+                "status": "available",
+                "horizontal": horizontal,
+                "vertical": vertical,
+                "hint": f"{vertical}_{horizontal}",
+                "uncertainty": None,
+            }
+            offset_x = center_x - 0.5
+            offset_y = center_y - 0.5
+            center_offset = {
+                "status": "available",
+                "visual_center": [center_x, center_y],
+                "x_offset": offset_x,
+                "y_offset": offset_y,
+                "normalized_distance": float(
+                    np.hypot(offset_x, offset_y) / np.hypot(0.5, 0.5)
+                ),
+                "uncertainty": None,
+            }
+            thirds = np.asarray(
+                settings["rule_of_thirds_points"],
+                dtype=np.float64,
+            )
+            distances = np.hypot(
+                thirds[:, 0] - center_x,
+                thirds[:, 1] - center_y,
+            )
+            nearest_index = int(np.argmin(distances))
+            nearest_distance = float(distances[nearest_index])
+            distance_scale = float(
+                settings["rule_of_thirds_distance_scale"]
+            )
+            thirds_result = {
+                "status": "available",
+                "score": float(
+                    np.exp(-0.5 * (nearest_distance / distance_scale) ** 2)
+                ),
+                "nearest_intersection": thirds[nearest_index].tolist(),
+                "normalized_distance": nearest_distance,
+                "uncertainty": None,
+            }
+        else:
+            subject_hint = {
+                "status": "uncertain",
+                "horizontal": None,
+                "vertical": None,
+                "hint": "undetermined",
+                "uncertainty": "no_reliable_salient_region",
+            }
+            center_offset = {
+                "status": "uncertain",
+                "visual_center": None,
+                "x_offset": None,
+                "y_offset": None,
+                "normalized_distance": None,
+                "uncertainty": "no_reliable_salient_region",
+            }
+            thirds_result = {
+                "status": "uncertain",
+                "score": None,
+                "nearest_intersection": None,
+                "normalized_distance": None,
+                "uncertainty": "no_reliable_salient_region",
+            }
+
+        luminance = image.luminance
+        half_width = image.width // 2
+        half_height = image.height // 2
+        left_right = (
+            float(
+                1.0
+                - np.mean(
+                    np.abs(
+                        luminance[:, :half_width]
+                        - np.flip(luminance[:, -half_width:], axis=1)
+                    )
+                )
+            )
+            if half_width > 0
+            else 1.0
+        )
+        top_bottom = (
+            float(
+                1.0
+                - np.mean(
+                    np.abs(
+                        luminance[:half_height, :]
+                        - np.flip(luminance[-half_height:, :], axis=0)
+                    )
+                )
+            )
+            if half_height > 0
+            else 1.0
+        )
+
+        return {
+            "configuration_version": settings["version"],
+            "subject_position_hint": subject_hint,
+            "visual_center_offset": center_offset,
+            "negative_space_ratio": float(
+                np.mean(maps["low_information"])
+            ),
+            "symmetry_score": {
+                "left_right": left_right,
+                "top_bottom": top_bottom,
+                "mean": (left_right + top_bottom) / 2.0,
+            },
+            "rule_of_thirds_score": thirds_result,
+            "saliency_diagnostics": {
+                "peak_to_mean": peak_to_mean,
+                "mean_signal": saliency_mean,
+            },
+            "interpretation_limit": "Computed geometry and saliency hints only; not an aesthetic judgment",
+        }
+
+
 
 
 class GlobalToneExtractor(BaseExtractor):
@@ -660,6 +1059,9 @@ class ExtractorRegistry:
             WarmCoolDistributionExtractor(),
             PaletteColorContrastExtractor(),
             ColorfulnessExtractor(),
+
+            SpaceStructureExtractor(),
+            CompositionGeometryExtractor(),
 
             GlobalToneExtractor(),
             LocalContrastExtractor(),
