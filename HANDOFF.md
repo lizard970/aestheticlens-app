@@ -228,3 +228,9 @@ Implemented on `handoff/20260906-tone-contrast`. The public result contract was 
 The later operator instruction adds versioned, configurable CIELAB `L*` tonal occupancy (`shadow`, `midtone`, `highlight`) as an operational distribution for comparison and retrieval. This does not reinstate the prohibited arbitrary `Y < 0.2 / Y > 0.8` calculation and does not claim semantic shadows/highlights, correct exposure, low-key photography, or aesthetic quality. The old fake Evidence overlay is removed; real Evidence Builder work remains Stage 1D.
 
 Validation on `feat/20260907-next`: backend 26 passed; frontend 3 passed; TypeScript and production build passed. Changed Stage 1B files pass targeted lint. Full-repository lint still reports pre-existing generated UI-kit accessibility/compiler findings outside the Stage 1B scope.
+
+## Stage 1B space/composition completion
+
+The later operator instruction extends the Stage 1B computational layer with independently registered `SpaceStructureExtractor` and `CompositionGeometryExtractor`. Both reuse the existing normalized SDR image and `FeatureResult` contract. They return deterministic edge, texture, focus-gradient, low-information, saliency-centroid, symmetry, and thirds-distance measurements; unreliable saliency or focus separation is explicitly returned as `uncertain`. No GPT, external model, persistence change, or aesthetic/emotional inference is introduced.
+
+Validation on `feat/20260907-next`: backend 31 passed; frontend 6 passed; TypeScript, changed-file lint, Python compilation, and production build passed. Full-repository lint continues to report the documented pre-existing UI-kit/hook/declaration findings outside the Stage 1B change set.

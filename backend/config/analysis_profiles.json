@@ -4,41 +4,89 @@
     "working_representation": "sRGB IEC61966-2-1 encoded; linear-light XYZ D65 for computation",
     "reference_white": "CIE D65, 2-degree observer",
     "histogram_bins": 32,
-    "analysis_raster": {"max_dimension": 2048, "resampling": "Pillow LANCZOS in colour-managed sRGB", "version": "1.0.0"},
-    "alpha_compositing": {"display_background_srgb": [1.0, 1.0, 1.0], "space": "linear-light XYZ D65", "version": "1.0.0"},
-    "local_contrast": {"scale_fractions": [0.015625, 0.03125, 0.0625, 0.125], "surround_ratio": 2.0, "denominator_floor": 0.0001, "boundary_mode": "reflect"},
-    "color_analysis": {
-    "chroma_histogram_bins": 32,
-    "chroma_histogram_range": [0.0, 150.0],
-    "achromatic_chroma_floor": 5.0,
-    "hue_histogram_bins": 12,
-
-    "palette": {
-      "cluster_count": 5,
-      "sample_limit": 20000,
-      "min_cluster_share": 0.02,
-      "random_seed": 7,
-      "max_iterations": 40
+    "analysis_raster": {
+      "max_dimension": 2048,
+      "resampling": "Pillow LANCZOS in colour-managed sRGB",
+      "version": "1.0.0"
     },
-
-    "warm_cool": {
-      "warm_ranges_degrees": [
-        [330.0, 360.0],
-        [0.0, 120.0]
+    "alpha_compositing": {
+      "display_background_srgb": [1.0, 1.0, 1.0],
+      "space": "linear-light XYZ D65",
+      "version": "1.0.0"
+    },
+    "local_contrast": {
+      "scale_fractions": [0.015625, 0.03125, 0.0625, 0.125],
+      "surround_ratio": 2.0,
+      "denominator_floor": 0.0001,
+      "boundary_mode": "reflect"
+    },
+    "space_analysis": {
+      "version": "1.0.0",
+      "boundary_mode": "reflect",
+      "local_window_fraction": 0.03125,
+      "minimum_sigma_pixels": 0.5,
+      "edge_magnitude_threshold": 0.04,
+      "edge_density_reference": 0.2,
+      "texture_variation_reference": 0.08,
+      "complexity_edge_weight": 0.55,
+      "complexity_texture_weight": 0.45,
+      "low_information_gradient_max": 0.02,
+      "low_information_local_std_max": 0.025,
+      "focus_inner_sigma_fraction": 0.0078125,
+      "focus_outer_sigma_fraction": 0.03125,
+      "center_region_fraction": 0.5,
+      "focus_signal_floor": 0.0001,
+      "focus_separation_min": 0.2,
+      "depth_band_count": 3,
+      "depth_relative_spread_min": 0.2
+    },
+    "composition_analysis": {
+      "version": "1.0.0",
+      "saliency_gradient_weight": 0.6,
+      "saliency_texture_weight": 0.4,
+      "saliency_smoothing_fraction": 0.015625,
+      "saliency_signal_floor": 0.0001,
+      "saliency_peak_to_mean_min": 1.15,
+      "position_center_min": 0.4,
+      "position_center_max": 0.6,
+      "rule_of_thirds_points": [
+        [0.333333, 0.333333],
+        [0.666667, 0.333333],
+        [0.333333, 0.666667],
+        [0.666667, 0.666667]
       ],
-      "cool_ranges_degrees": [
-        [120.0, 330.0]
-      ]
+      "rule_of_thirds_distance_scale": 0.235702
     },
+    "color_analysis": {
+      "chroma_histogram_bins": 32,
+      "chroma_histogram_range": [0.0, 150.0],
+      "achromatic_chroma_floor": 5.0,
+      "hue_histogram_bins": 12,
 
-    "color_contrast": {
-      "metric": "CIEDE2000"
+      "palette": {
+        "cluster_count": 5,
+        "sample_limit": 20000,
+        "min_cluster_share": 0.02,
+        "random_seed": 7,
+        "max_iterations": 40
+      },
+
+      "warm_cool": {
+        "warm_ranges_degrees": [
+          [330.0, 360.0],
+          [0.0, 120.0]
+        ],
+        "cool_ranges_degrees": [[120.0, 330.0]]
+      },
+
+      "color_contrast": {
+        "metric": "CIEDE2000"
+      },
+
+      "colorfulness": {
+        "method": "Hasler-Susstrunk"
+      }
     },
-
-    "colorfulness": {
-      "method": "Hasler-Susstrunk"
-    }
-  },
     "tonal_occupancy": {
       "version": "1.0.0",
       "space": "CIELAB L* (D65, 2-degree observer)",
@@ -53,11 +101,11 @@
       "name": "画面美学基础分析",
       "version": "1.0.0",
       "dimensions": [
-        {"code": "composition", "label": "构图"},
-        {"code": "color", "label": "色彩"},
-        {"code": "lighting", "label": "光影"},
-        {"code": "space", "label": "空间"},
-        {"code": "style", "label": "风格"}
+        { "code": "composition", "label": "构图" },
+        { "code": "color", "label": "色彩" },
+        { "code": "lighting", "label": "光影" },
+        { "code": "space", "label": "空间" },
+        { "code": "style", "label": "风格" }
       ],
       "provider": "mock",
       "pipeline_version": "1.0.0-hybrid"

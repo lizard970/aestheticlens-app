@@ -13,6 +13,7 @@ import type { AnalysisResult, AnalysisStage, FeedbackDraft, UploadedAsset } from
 import { MockAnalysisProvider } from '@/lib/mock-analysis-provider';
 import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
 import { ComputationalFeatures } from '@/components/computational-features';
+import { CompositionComputationalFeatures, SpaceComputationalFeatures } from '@/components/spatial-composition-features';
 
 
 const stageMeta: Record<AnalysisStage, { label: string; progress: number }> = {
@@ -199,6 +200,18 @@ export function AestheticWorkspace() {
 
       {dimension.code === 'color' && (
         <ColorComputationalFeatures
+          features={result.features}
+        />
+      )}
+
+      {dimension.code === 'space' && (
+        <SpaceComputationalFeatures
+          features={result.features}
+        />
+      )}
+
+      {dimension.code === 'composition' && (
+        <CompositionComputationalFeatures
           features={result.features}
         />
       )}
