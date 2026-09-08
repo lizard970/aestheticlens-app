@@ -13,6 +13,8 @@ import type { AnalysisResult, AnalysisStage, FeedbackDraft, UploadedAsset } from
 import { MockAnalysisProvider } from '@/lib/mock-analysis-provider';
 import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
 import { ComputationalFeatures } from '@/components/computational-features';
+import { analysisPresentation } from '@/lib/analysis-presentation';
+import { SemanticStatus } from '@/components/semantic-status';
 import { CompositionComputationalFeatures, SpaceComputationalFeatures } from '@/components/spatial-composition-features';
 
 
@@ -54,6 +56,7 @@ export function AestheticWorkspace() {
   const [feedback, setFeedback] = useState<FeedbackDraft>({ verdict: null, note: '' });
   const [feedbackSaved, setFeedbackSaved] = useState(false);
   const status = stageMeta[stage];
+  const presentation = analysisPresentation(result);
   const isRunning = ['extracting', 'analyzing', 'building'].includes(stage);
 
   useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.previewUrl); }, [asset]);
@@ -130,7 +133,7 @@ export function AestheticWorkspace() {
           <div><p className="text-base font-semibold tracking-tight">AestheticLens</p><p className="text-xs text-muted-foreground">美学评测工作台</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-cyan-300/25 text-cyan-200">Hybrid Pipeline · 1.0</Badge>
+          <Badge variant="outline" className="border-cyan-300/25 text-cyan-200">{presentation.pipeline}</Badge>
           <Button variant="outline" size="sm" className="border-white/10 bg-white/3"><SlidersHorizontal data-icon="inline-start" />分析配置</Button>
         </div>
       </header>
@@ -178,9 +181,9 @@ export function AestheticWorkspace() {
 
             <section className="rounded-2xl border border-white/9 bg-card p-4 sm:p-5">
               {!result ? <div className="flex min-h-[520px] flex-col items-center justify-center text-center"><div className="mb-4 flex size-12 items-center justify-center rounded-2xl border border-cyan-300/15 bg-cyan-300/6 text-cyan-200"><MessageSquareText className="size-6" /></div><h2 className="text-lg font-medium">分析结果将在这里展开</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">上传图片后，系统会依次展示任务进度、五维判断、证据和反馈入口。</p></div> : <>
-                <div className="mb-4"><div className="mb-2 flex items-center gap-2"><Badge className="bg-cyan-300 text-black">真实计算 + Mock 语义</Badge>{result.completionStatus === 'partial' && <Badge variant="destructive">部分完成</Badge>}<span className="font-mono text-xs text-muted-foreground">{result.id.slice(0, 8)}</span></div><h2 className="text-lg font-semibold">{result.summary}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{result.intent}</p></div>
-                <p className="mb-2 text-xs font-medium text-amber-200">Mock semantic analysis · 五维文字内容仍为交互占位</p>
-                <Tabs defaultValue={result.dimensions[0].code}>
+                <div className="mb-4"><div className="mb-2 flex items-center gap-2"><Badge className="bg-cyan-300 text-black">{presentation.pipeline}</Badge>{result.completionStatus === 'partial' && <Badge variant="destructive">部分完成</Badge>}<span className="font-mono text-xs text-muted-foreground">{result.id.slice(0, 8)}</span></div><h2 className="text-lg font-semibold">{result.summary}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{result.intent}</p></div>
+                <SemanticStatus result={result} />
+                <Tabs defaultValue={result.dimensions[0]?.code}>
                   <TabsList variant="line" className="w-full justify-start overflow-x-auto border-b border-white/8 pb-2">{result.dimensions.map((dimension) => <TabsTrigger key={dimension.code} value={dimension.code} className="px-3">{dimension.label}</TabsTrigger>)}</TabsList>
                   {result.dimensions.map((dimension) => (
   <TabsContent
@@ -232,7 +235,7 @@ export function AestheticWorkspace() {
           </p>
 
           <span className="font-mono text-xs text-muted-foreground">
-            证据支持 {(dimension.confidence * 100).toFixed(0)}%
+            {presentation.confidence}
           </span>
         </div>
 
@@ -242,6 +245,7 @@ export function AestheticWorkspace() {
       </div>
 
       <div>
+        {dimension.code === 'style' && <p className="mb-2 text-sm">风格标签：{result.tags.length ? result.tags.join(' · ') : '暂无可确认标签'}</p>}
         <p className="mb-2 text-xs font-medium text-muted-foreground">
           证据引用
         </p>

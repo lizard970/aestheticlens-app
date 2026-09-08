@@ -7,7 +7,7 @@ interface ApiResult {
   summary: string;
   dimensions: Array<{ code: string; label: string; observation: string; interpretation: string; confidence: number; evidence_refs: string[] }>;
   tags: string[];
-  provenance: { mode?: 'mock' | 'hybrid' | 'real'; profile_version?: string; pipeline_version?: string };
+  provenance: { mode?: 'mock' | 'hybrid' | 'real'; profile_version?: string; pipeline_version?: string; semantic?: AnalysisResult['provenance']['semantic'] };
   features?: FeatureResult[];
   warnings?: string[];
   completion_status?: 'complete' | 'partial';
@@ -33,9 +33,9 @@ export class ApiAnalysisProvider implements AnalysisProvider {
     });
     const result = await jsonRequest<ApiResult>(`${API_BASE_URL}/analysis-jobs/${job.id}/result`);
     return {
-      id: result.id, summary: result.summary, intent: '真实像素计算用于可复现事实；五维语义判断仍为 Mock，不构成审美评分。',
+      id: result.id, summary: result.summary, intent: '计算特征提供画面事实；语义分析状态与不确定性见下方。',
       dimensions: result.dimensions.map((item) => ({ ...item, evidence: item.evidence_refs })), tags: result.tags,
-      provenance: { mode: result.provenance.mode ?? 'mock', profileVersion: result.provenance.profile_version ?? 'unknown', pipelineVersion: result.provenance.pipeline_version ?? 'unknown' },
+      provenance: { mode: result.provenance.mode ?? 'mock', profileVersion: result.provenance.profile_version ?? 'unknown', pipelineVersion: result.provenance.pipeline_version ?? 'unknown', semantic: result.provenance.semantic },
       features: result.features ?? [], warnings: result.warnings ?? [], completionStatus: result.completion_status ?? 'complete',
     };
   }
