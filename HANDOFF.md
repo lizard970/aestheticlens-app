@@ -1,5 +1,16 @@
 # Codex Handoff
 
+## Stage 1C-01 operator-approved implementation (2026-09-09)
+
+This instruction supersedes earlier Mock-only restrictions for semantics. Implemented on `feat/20260907-next`; local commit only, no push or deployment.
+
+- Existing orchestration injects Mock or configurable Chat Completions multimodal adapters. No public result schema, feature algorithm, database, or route changes.
+- Normalized PNG and successful feature references feed all five dimensions. Versioned Prompt, strict output Schema and editable style vocabulary validate dimensions, tags, leaf references and numeric placeholders. Explicit uncertainty and mixed/no-style selections are supported.
+- Timeout and bounded transient retries retain per-attempt usage, duration, versions and sanitized errors in existing provenance; unknown cost remains null. Model failure preserves real calculations and returns partial, never silently Mock.
+- Frontend derives pipeline and semantic labels from provenance, displays failures/uncertainty/style tags, and removes probability-like confidence presentation.
+- Offline HTTP transport blocking prevents test model charges. `backend: python -m pytest -q`: 48 passed. `pnpm test`: 10 passed. `pnpm typecheck` and `pnpm build`: passed. Targeted `pnpm exec oxlint` over changed TS/TSX files: passed. `pnpm lint`: 20 existing findings in unmodified UI-kit, hook and webmcp files; not expanded into this task.
+- No live provider/base URL/model/API key is configured; offline passed, live invocation pending. Configure `.env` using `.env.example` and follow `docs/stage-1c-01.md`. No new dependency was needed.
+
 ## Goal
 
 Implement Stage 1B-01 for AestheticLens: replace the Stage 1A mock computational feature values with a real, colour-managed, deterministic single-image tone and contrast measurement pipeline, while preserving the existing API, task lifecycle, mock semantic analysis, and all future extension boundaries.

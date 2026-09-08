@@ -42,6 +42,7 @@ export interface AnalysisResult {
     mode: 'mock' | 'hybrid' | 'real';
     profileVersion: string;
     pipelineVersion: string;
+    semantic?: { status?: string; uncertainty?: Record<string, string> };
   };
   features: FeatureResult[];
   warnings: string[];

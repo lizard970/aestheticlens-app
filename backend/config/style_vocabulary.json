@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "tags": [
+    {"code": "minimalist", "label": "极简", "definition": "少量视觉元素与简化的组织关系", "support": ["主体与关系简洁", "较少背景细节及明确视觉重点"], "exclude": ["只有留白较多但其他区域杂乱", "纯色图缺少表达依据"]},
+    {"code": "documentary_like", "label": "纪实倾向", "definition": "呈现日常场景与自然互动的视觉倾向，不证明拍摄真实性", "support": ["可见环境细节和自然活动关系"], "exclude": ["仅凭低饱和或颗粒", "画面不足以辨认活动"]},
+    {"code": "retro_treatment", "label": "复古处理倾向", "definition": "模拟较早影像媒介视觉处理的组合特征", "support": ["色调处理与颗粒或柔化等多项线索相互支持"], "exclude": ["仅凭暖色", "压缩噪声被误认作胶片颗粒"]},
+    {"code": "expressionist", "label": "表现主义倾向", "definition": "以显著夸张或变形的光影、色彩、空间表达意图", "support": ["多项可见夸张视觉关系共同支持"], "exclude": ["只因为对比度高", "无法观察夸张或变形关系"]}
+  ]
+}
