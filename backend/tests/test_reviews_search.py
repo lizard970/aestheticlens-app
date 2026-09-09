@@ -193,4 +193,5 @@ def test_search_input_validation_and_capabilities(stored):
     assert search(client, semantic_query="unsupported").status_code == 422
     codes = {item["code"]: item["status"] for item in client.get("/api/v1/capabilities").json()["capabilities"]}
     assert codes["structured_search"] == "available"
-    assert codes["semantic_search"] == codes["hybrid_search"] == "not_implemented"
+    assert codes["semantic_search"] == "available"
+    assert codes["hybrid_search"] == "not_implemented"

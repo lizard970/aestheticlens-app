@@ -3,14 +3,23 @@ from uuid import uuid4
 
 import pytest
 
-from app.knowledge import StoredKnowledgeRepository
-from app.models import AnalysisJob, AnalysisResult, AnalysisTarget, Asset, DimensionResult, FeatureResult, FeedbackCreate, StructuredSearchRequest
+from app.knowledge import SemanticSearchService, StoredKnowledgeRepository
+from app.models import (AnalysisJob, AnalysisResult, AnalysisTarget, Asset, DimensionResult,
+                        FeatureResult, FeedbackCreate, SemanticSearchRequest, StructuredSearchRequest)
 from app.repositories import PostgreSQLRepository
 from app.reviews import ReviewService
 
 
 DATABASE_URL = os.getenv("AESTHETICLENS_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="AESTHETICLENS_TEST_DATABASE_URL is not configured")
+
+
+class PersistentFakeEmbeddingAdapter:
+    model_name = "fake-1536"
+
+    def embed(self, text):
+        del text
+        return [1.0] + [0.0] * 1535
 
 
 def test_restart_persistence_revision_history_and_structured_search():
@@ -29,7 +38,7 @@ def test_restart_persistence_revision_history_and_structured_search():
     first.save_asset(asset, b"fixture")
     first.save_job(job)
     first.save_result(result)
-    review = ReviewService(first)
+    review = ReviewService(first, SemanticSearchService(first, PersistentFakeEmbeddingAdapter()))
     for index, dimension in enumerate(dimensions):
         review.save(result.id, FeedbackCreate(feedback_type="accept", target_path=f"/dimensions/{dimension.code}",
                                               comment=f"persist-{dimension.code}", base_revision=index))
@@ -44,3 +53,8 @@ def test_restart_persistence_revision_history_and_structured_search():
         tags=[unique_tag], numeric_filters=[{"feature_ref": "feature:metric#/value", "op": "gte", "value": .75}],
     ))
     assert [hit.result_id for hit in hits] == [result.id]
+    semantic_hits = SemanticSearchService(restarted, PersistentFakeEmbeddingAdapter()).search(
+        SemanticSearchRequest(query="persistent", limit=1)
+    )
+    assert [hit.result_id for hit in semantic_hits] == [result.id]
+    assert restarted.get_case_embedding(result.id).source_text.startswith("Summary: Persistent case")

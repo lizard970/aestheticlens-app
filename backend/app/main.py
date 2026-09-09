@@ -5,18 +5,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from .config import load_analysis_profiles
-from .models import AnalysisJob, AnalysisJobCreate, AnalysisResultView, Asset, Capability, Feedback, FeedbackCreate, StructuredSearchRequest
+from .embeddings import EmbeddingError, configured_embedding_adapter
+from .models import (AnalysisJob, AnalysisJobCreate, AnalysisResultView, Asset, Capability,
+                     Feedback, FeedbackCreate, SemanticSearchRequest, StructuredSearchRequest)
 from .repositories import repository_from_env
 from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
-from .knowledge import StoredKnowledgeRepository
+from .knowledge import SemanticSearchService, StoredKnowledgeRepository
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], allow_methods=["*"], allow_headers=["*"])
 repository = repository_from_env()
 analysis_service = MockAnalysisService(repository)
+embedding_adapter = configured_embedding_adapter()
+semantic_search_service = SemanticSearchService(repository, embedding_adapter) if embedding_adapter else None
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -27,7 +31,7 @@ def get_capabilities() -> dict[str, list[Capability]]:
         Capability(code="video_shot_detection", status="not_implemented"),
         Capability(code="hybrid_retrieval", status="not_implemented"),
         Capability(code="structured_search", status="available", version="1.0"),
-        Capability(code="semantic_search", status="not_implemented"),
+        Capability(code="semantic_search", status="available", version="1.0"),
         Capability(code="hybrid_search", status="not_implemented"),
         Capability(code="evaluation_runner", status="not_implemented"),
     ]}
@@ -83,7 +87,7 @@ def get_analysis_result(job_id: UUID) -> AnalysisResultView:
 @app.post("/api/v1/analysis-results/{result_id}/feedback", status_code=status.HTTP_201_CREATED)
 def create_feedback(result_id: UUID, payload: FeedbackCreate) -> Feedback:
     try:
-        return ReviewService(repository).save(result_id, payload)
+        return ReviewService(repository, semantic_search_service).save(result_id, payload)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -131,3 +135,13 @@ def read_asset_content(asset_id: UUID):
 @app.post("/api/v1/search/structured")
 def structured_search(query: StructuredSearchRequest):
     return {"items": StoredKnowledgeRepository(repository).search(query)}
+
+
+@app.post("/api/v1/search/semantic")
+def semantic_search(query: SemanticSearchRequest):
+    if semantic_search_service is None:
+        raise HTTPException(status_code=503, detail="SEMANTIC_SEARCH_NOT_CONFIGURED")
+    try:
+        return {"items": semantic_search_service.search(query)}
+    except EmbeddingError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
