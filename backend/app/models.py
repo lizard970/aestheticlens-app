@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def utc_now() -> datetime:
@@ -112,9 +112,67 @@ class FeedbackCreate(BaseModel):
     corrected_value: Any | None = None
     error_category: str | None = None
     comment: str | None = None
+    base_revision: int | None = Field(default=None, ge=0)
 
 
 class Feedback(FeedbackCreate):
     id: UUID = Field(default_factory=uuid4)
     result_id: UUID
     created_at: datetime = Field(default_factory=utc_now)
+    revision: int = 0
+    original_value: Any | None = None
+
+
+class ResolvedEvidence(BaseModel):
+    id: str
+    label: str
+    value: Any | None = None
+    extractor_code: str | None = None
+    field_path: str | None = None
+    status: Literal["resolved", "invalid", "mock"]
+    supports_dimensions: list[str]
+
+
+class ReviewedDimension(BaseModel):
+    code: str
+    label: str
+    observation: str
+    interpretation: str
+    review_status: Literal["unreviewed", "accept", "edit", "reject", "flag_error"] = "unreviewed"
+    feedback_id: UUID | None = None
+
+
+class HumanRevision(BaseModel):
+    revision: int
+    dimensions: list[ReviewedDimension]
+
+
+class AnalysisResultView(AnalysisResult):
+    evidence: list[ResolvedEvidence] = Field(default_factory=list)
+    human_revision: HumanRevision
+    asset_id: UUID
+    preview_url: str
+
+
+class NumericFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feature_ref: str = Field(pattern=r"^feature:[^#\s]+#/(?:[^~]|~[01])+$")
+    op: Literal["eq", "gt", "gte", "lt", "lte"]
+    value: float = Field(strict=True, allow_inf_nan=False)
+
+
+class StructuredSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tags: list[str] = Field(default_factory=list)
+    numeric_filters: list[NumericFilter] = Field(default_factory=list)
+
+
+class SearchableCase(BaseModel):
+    asset_id: UUID
+    result_id: UUID
+    job_id: UUID
+    original_filename: str
+    preview_url: str
+    tags: list[str]
+    revision: int
+    preview_text: str

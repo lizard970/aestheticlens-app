@@ -47,6 +47,35 @@ export interface AnalysisResult {
   features: FeatureResult[];
   warnings: string[];
   completionStatus: 'complete' | 'partial';
+  resolvedEvidence?: ResolvedEvidence[];
+  humanRevision?: HumanRevision;
+  previewUrl?: string;
+}
+
+export interface ResolvedEvidence {
+  id: string;
+  label: string;
+  value: unknown;
+  status: 'resolved' | 'invalid' | 'mock';
+  supports_dimensions: string[];
+}
+
+export interface HumanRevision {
+  revision: number;
+  dimensions: Array<{
+    code: string; label: string; observation: string; interpretation: string;
+    review_status: 'unreviewed' | 'accept' | 'edit' | 'reject' | 'flag_error';
+    feedback_id: string | null;
+  }>;
+}
+
+export interface DimensionFeedback {
+  feedback_type: 'accept' | 'edit' | 'reject';
+  target_path: string;
+  corrected_value?: { observation: string; interpretation: string };
+  comment?: string;
+  error_category?: string;
+  base_revision: number;
 }
 
 export interface FeedbackDraft {
