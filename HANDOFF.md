@@ -1,5 +1,13 @@
 # Codex Handoff
 
+## Smallest semantic-search slice (2026-09-09)
+
+Implemented a replaceable `EmbeddingAdapter` with an env-configured OpenAI embeddings adapter, one 1536-dimensional pgvector row per currently searchable confirmed real case, and `POST /api/v1/search/semantic`. Embedding input is limited to summary, style tags, and current reviewed dimension interpretations; edited human text wins, and raw feature JSON is excluded. Feedback transitions synchronously upsert or delete the case embedding. Structured search is unchanged; no hybrid search, RAG, collections, or reranker were added.
+
+PostgreSQL migration `002_semantic_search.sql` enables pgvector, creates the case-embedding table, and adds a cosine HNSW index. `python -m app.reindex_embeddings` indexes already-confirmed persisted cases. Tests use fake embeddings and block external HTTP. The real PostgreSQL restart test remains gated by `AESTHETICLENS_TEST_DATABASE_URL` because this host has no PostgreSQL/pgvector service.
+
+Validation: `backend: python -m pytest -q` — 75 passed, 1 PostgreSQL/pgvector integration test skipped; `pnpm test` — 15 passed; `pnpm typecheck`, `pnpm build`, Python `compileall`, and `git diff --check` passed. No live embedding provider was called.
+
 ## Stage 1D review history + PostgreSQL persistence (2026-09-09)
 
 Implemented per-dimension review counts and newest-first expandable history. Each card filters feedback by `/dimensions/<code>` (including field-level descendants), while optimistic concurrency continues to use the result-wide latest revision. Accept/edit/reject submit an explicit nullable `comment`; raw model results remain immutable and feedback remains append-only.

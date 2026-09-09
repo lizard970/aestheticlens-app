@@ -1,3 +1,5 @@
+import logging
+from typing import Protocol
 from uuid import UUID
 
 from .evidence import resolve_evidence
@@ -5,9 +7,13 @@ from .models import AnalysisResultView, Feedback, FeedbackCreate, HumanRevision,
 from .repositories import Repository
 
 
+logger = logging.getLogger(__name__)
+
+
 class ReviewService:
-    def __init__(self, repository: Repository):
+    def __init__(self, repository: Repository, indexer: "CaseIndexer | None" = None):
         self.repository = repository
+        self.indexer = indexer
 
     def original(self, result_id: UUID):
         result = self.repository.get_result(result_id)
@@ -61,7 +67,13 @@ class ReviewService:
             raw_value = raw_value[parts[3]]
         if not parts:
             raw_value = [d.model_dump() for d in raw_value]
-        return self.repository.append_feedback(Feedback(result_id=result_id, original_value=raw_value, **payload.model_dump()))
+        saved = self.repository.append_feedback(Feedback(result_id=result_id, original_value=raw_value, **payload.model_dump()))
+        if self.indexer is not None:
+            try:
+                self.indexer.refresh(result_id)
+            except Exception:
+                logger.exception("Feedback persisted but semantic index refresh failed for %s", result_id)
+        return saved
 
     def view(self, result_id: UUID, revision: int | None = None) -> AnalysisResultView:
         original = self.original(result_id)
@@ -76,3 +88,7 @@ class ReviewService:
     def history(self, result_id: UUID):
         return {"original_result": self.original(result_id), "feedback": list(reversed(self.repository.read_feedback(result_id))),
                 "latest_revision": self.revision(result_id)}
+
+
+class CaseIndexer(Protocol):
+    def refresh(self, result_id: UUID) -> None: ...

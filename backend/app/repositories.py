@@ -1,12 +1,14 @@
 import json
+import math
 import os
 from pathlib import Path
 from threading import RLock
 from typing import Protocol
 from uuid import UUID
 
+from .embeddings import EMBEDDING_DIMENSIONS
 from .evidence import resolve_evidence
-from .models import AnalysisJob, AnalysisResult, Asset, Feedback
+from .models import AnalysisJob, AnalysisResult, Asset, Feedback, StoredCaseEmbedding
 
 
 class Repository(Protocol):
@@ -21,6 +23,10 @@ class Repository(Protocol):
     def list_results(self) -> list[AnalysisResult]: ...
     def read_feedback(self, result_id: UUID) -> list[Feedback]: ...
     def append_feedback(self, feedback: Feedback) -> Feedback: ...
+    def upsert_case_embedding(self, embedding: StoredCaseEmbedding) -> None: ...
+    def delete_case_embedding(self, result_id: UUID) -> None: ...
+    def get_case_embedding(self, result_id: UUID) -> StoredCaseEmbedding | None: ...
+    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]: ...
 
 
 class InMemoryRepository:
@@ -30,6 +36,7 @@ class InMemoryRepository:
         self.results: dict[UUID, AnalysisResult] = {}
         self.feedback: dict[UUID, list[Feedback]] = {}
         self.asset_bytes: dict[UUID, bytes] = {}
+        self.case_embeddings: dict[UUID, StoredCaseEmbedding] = {}
         self._review_lock = RLock()
 
     def save_asset(self, asset: Asset, content: bytes) -> None:
@@ -79,6 +86,26 @@ class InMemoryRepository:
             history.append(saved)
             return saved.model_copy(deep=True)
 
+    def upsert_case_embedding(self, embedding: StoredCaseEmbedding) -> None:
+        self.case_embeddings[embedding.result_id] = embedding.model_copy(deep=True)
+
+    def delete_case_embedding(self, result_id: UUID) -> None:
+        self.case_embeddings.pop(result_id, None)
+
+    def get_case_embedding(self, result_id: UUID) -> StoredCaseEmbedding | None:
+        embedding = self.case_embeddings.get(result_id)
+        return embedding.model_copy(deep=True) if embedding else None
+
+    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]:
+        def cosine(candidate: StoredCaseEmbedding) -> float:
+            dot = sum(left * right for left, right in zip(candidate.embedding, embedding, strict=True))
+            left_norm = math.sqrt(sum(value * value for value in candidate.embedding))
+            right_norm = math.sqrt(sum(value * value for value in embedding))
+            return dot / (left_norm * right_norm) if left_norm and right_norm else 0.0
+        ranked = sorted(((item, cosine(item)) for item in self.case_embeddings.values()),
+                        key=lambda pair: pair[1], reverse=True)
+        return [(item.model_copy(deep=True), score) for item, score in ranked[:limit]]
+
 
 def _json_data(model) -> dict:
     return json.loads(model.model_dump_json())
@@ -100,9 +127,10 @@ class PostgreSQLRepository:
         return psycopg.connect(self.database_url)
 
     def migrate(self) -> None:
-        migration = Path(__file__).parents[1] / "migrations" / "001_initial.sql"
+        migrations = Path(__file__).parents[1] / "migrations"
         with self._connect() as connection:
-            connection.execute(migration.read_text(encoding="utf-8"))
+            for migration in sorted(migrations.glob("*.sql")):
+                connection.execute(migration.read_text(encoding="utf-8"))
 
     def save_asset(self, asset: Asset, content: bytes) -> None:
         from psycopg.types.json import Jsonb
@@ -207,6 +235,50 @@ class PostgreSQLRepository:
                 (saved.id, saved.result_id, saved.revision, saved.created_at, Jsonb(_json_data(saved))),
             )
         return saved
+
+    @staticmethod
+    def _vector_literal(embedding: list[float]) -> str:
+        return "[" + ",".join(format(value, ".17g") for value in embedding) + "]"
+
+    def upsert_case_embedding(self, embedding: StoredCaseEmbedding) -> None:
+        if len(embedding.embedding) != EMBEDDING_DIMENSIONS:
+            raise ValueError("EMBEDDING_DIMENSION_MISMATCH")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO knowledge_case_embeddings "
+                "(result_id, revision, model, source_text, embedding) VALUES (%s, %s, %s, %s, %s::vector) "
+                "ON CONFLICT (result_id) DO UPDATE SET revision=EXCLUDED.revision, model=EXCLUDED.model, "
+                "source_text=EXCLUDED.source_text, embedding=EXCLUDED.embedding, updated_at=now()",
+                (embedding.result_id, embedding.revision, embedding.model, embedding.source_text,
+                 self._vector_literal(embedding.embedding)),
+            )
+
+    def delete_case_embedding(self, result_id: UUID) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM knowledge_case_embeddings WHERE result_id=%s", (result_id,))
+
+    def get_case_embedding(self, result_id: UUID) -> StoredCaseEmbedding | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT result_id, revision, model, source_text, embedding::text "
+                "FROM knowledge_case_embeddings WHERE result_id=%s", (result_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return StoredCaseEmbedding(result_id=row[0], revision=row[1], model=row[2], source_text=row[3],
+                                   embedding=json.loads(row[4]))
+
+    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]:
+        vector = self._vector_literal(embedding)
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT result_id, revision, model, source_text, embedding::text, "
+                "1 - (embedding <=> %s::vector) AS similarity "
+                "FROM knowledge_case_embeddings ORDER BY embedding <=> %s::vector LIMIT %s",
+                (vector, vector, limit),
+            ).fetchall()
+        return [(StoredCaseEmbedding(result_id=row[0], revision=row[1], model=row[2], source_text=row[3],
+                                     embedding=json.loads(row[4])), float(row[5])) for row in rows]
 
 
 def repository_from_env() -> Repository:

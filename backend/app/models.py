@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -175,5 +175,37 @@ class SearchableCase(BaseModel):
     original_filename: str
     preview_url: str
     tags: list[str]
+    revision: int
+    preview_text: str
+
+
+class SemanticSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    query: str = Field(min_length=1, max_length=2000)
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("query must not be blank")
+        return value.strip()
+
+
+class StoredCaseEmbedding(BaseModel):
+    result_id: UUID
+    revision: int
+    model: str
+    source_text: str
+    embedding: list[float]
+
+
+class SemanticSearchCase(BaseModel):
+    asset_id: UUID
+    result_id: UUID
+    similarity: float
+    tags: list[str]
+    original_filename: str
+    preview_url: str
     revision: int
     preview_text: str

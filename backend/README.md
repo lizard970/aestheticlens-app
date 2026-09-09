@@ -26,4 +26,9 @@ python -m uvicorn app.main:app --reload --port 8000
 ```
 
 如需运行 PostgreSQL 重启持久化集成测试，将同一测试数据库连接串设置为
-`AESTHETICLENS_TEST_DATABASE_URL`。迁移仅创建基础表和索引，不包含向量、嵌入或语义检索。
+`AESTHETICLENS_TEST_DATABASE_URL`。
+
+语义检索需要 PostgreSQL 安装 pgvector 扩展，并配置 `.env.example` 中的
+`AESTHETICLENS_EMBEDDING_*`。`python -m app.migrate` 会创建扩展、1536 维向量表和
+cosine HNSW 索引。首次启用时运行 `python -m app.reindex_embeddings`，为已有合格案例
+补建向量。当前只调用外部 OpenAI embeddings API，不下载或托管模型。
