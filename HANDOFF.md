@@ -1,5 +1,11 @@
 # Codex Handoff
 
+## Smallest hybrid-search slice (2026-09-09)
+
+Implemented `POST /api/v1/search/hybrid`. Existing structured tags/numeric filters remain hard AND constraints, and pgvector cosine similarity ranks only the eligible result IDs that pass them. Query-only and structured-only requests are supported; structured-only results return `similarity: null` without calling the embedding provider. The new `field` numeric contract supports full feature references, unambiguous leaf names, and the explicit `shadow_occupancy` → `feature:tonal_occupancy#/shadow_share` alias. Existing structured and semantic endpoints are unchanged. No UI, RAG, reranker, or collections were added.
+
+Restart coverage extends the existing PostgreSQL/pgvector integration test. Validation: `python -m pytest -q tests/test_postgresql_repository.py` — 1 skipped because `AESTHETICLENS_TEST_DATABASE_URL` is not configured on this host; `python -m pytest -q` — 78 passed, 1 skipped; `pnpm test` — 15 passed; `pnpm typecheck` and `pnpm build` passed.
+
 ## psycopg3 executemany compatibility fix (2026-09-09)
 
 Updated both batch inserts in `PostgreSQLRepository.save_result()` to call `executemany()` on a cursor created by `connection.cursor()`. A backend-wide scan found no other `Connection.executemany` usage. Behavior and transaction scope are unchanged.

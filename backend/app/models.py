@@ -209,3 +209,42 @@ class SemanticSearchCase(BaseModel):
     preview_url: str
     revision: int
     preview_text: str
+
+
+class HybridNumericFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: str = Field(min_length=1, max_length=200)
+    op: Literal["eq", "gt", "gte", "lt", "lte"]
+    value: float = Field(strict=True, allow_inf_nan=False)
+
+
+class HybridSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    query: str | None = Field(default=None, max_length=2000)
+    tags: list[str] = Field(default_factory=list)
+    numeric_filters: list[HybridNumericFilter] = Field(default_factory=list)
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def normalize_optional_query(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class MatchedStructuredConditions(BaseModel):
+    tags: list[str]
+    numeric_filters: list[HybridNumericFilter]
+
+
+class HybridSearchCase(BaseModel):
+    asset_id: UUID
+    result_id: UUID
+    similarity: float | None
+    tags: list[str]
+    matched_structured_conditions: MatchedStructuredConditions
+    original_filename: str
+    preview_url: str
+    revision: int
+    preview_text: str

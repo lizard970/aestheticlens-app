@@ -5,10 +5,10 @@ import httpx
 from fastapi.testclient import TestClient
 
 import app.main as main
-from app.knowledge import SemanticSearchService
+from app.knowledge import HybridSearchService, SemanticSearchService
 from app.embeddings import EMBEDDING_DIMENSIONS, OpenAIEmbeddingAdapter, OpenAIEmbeddingSettings
 from app.models import (AnalysisJob, AnalysisResult, AnalysisTarget, Asset, DimensionResult,
-                        FeatureResult, FeedbackCreate, SemanticSearchRequest)
+                        FeatureResult, FeedbackCreate, HybridSearchRequest, SemanticSearchRequest)
 from app.repositories import InMemoryRepository
 from app.reviews import ReviewService
 
@@ -40,18 +40,19 @@ def test_openai_adapter_uses_embeddings_api_contract(monkeypatch):
                                "encoding_format": "float", "dimensions": EMBEDDING_DIMENSIONS}
 
 
-def add_case(repository, interpretation="quiet cold image", mode="real"):
+def add_case(repository, interpretation="quiet cold image", mode="real", tags=None, shadow=.5):
     asset = Asset(original_filename=f"{uuid4()}.png", mime_type="image/png", size_bytes=1)
     job = AnalysisJob(target=AnalysisTarget(type="asset", id=asset.id), analysis_profile_id="aesthetic-core-v1",
                       requested_outputs=["features"])
     dimensions = [DimensionResult(code=code, label=code, observation="Observation",
                                   interpretation=f"{interpretation} {code}", confidence=.5, evidence_refs=[])
                   for code in ["composition", "color", "lighting", "space", "style"]]
-    result = AnalysisResult(job_id=job.id, summary=interpretation, dimensions=dimensions, tags=["restrained"],
+    result = AnalysisResult(job_id=job.id, summary=interpretation, dimensions=dimensions,
+                            tags=tags or ["restrained"],
                             provenance={"mode": mode, "semantic": {"status": "succeeded"}},
-                            features=[FeatureResult(extractor_code="metric", extractor_version="1",
+                            features=[FeatureResult(extractor_code="tonal_occupancy", extractor_version="1",
                                                    feature_schema_version="1", method="Metric", status="succeeded",
-                                                   values={"secret_feature_json": 123})])
+                                                   values={"shadow_share": shadow, "secret_feature_json": 123})])
     repository.save_asset(asset, b"x")
     repository.save_job(job)
     repository.save_result(result)
@@ -121,3 +122,69 @@ def test_semantic_query_returns_nearest_stored_cases_and_api_shape(monkeypatch):
         "asset_id", "result_id", "similarity", "tags", "original_filename",
         "preview_url", "revision", "preview_text",
     }
+
+
+def test_hybrid_endpoint_supports_semantic_only(monkeypatch):
+    repository = InMemoryRepository()
+    adapter = FakeEmbeddingAdapter()
+    semantic = SemanticSearchService(repository, adapter)
+    reviews = ReviewService(repository, semantic)
+    cold = add_case(repository, "quiet cold")
+    warm = add_case(repository, "bright warm")
+    confirm(reviews, cold)
+    confirm(reviews, warm)
+    hybrid = HybridSearchService(repository, adapter)
+    monkeypatch.setattr(main, "hybrid_search_service", hybrid)
+    response = TestClient(main.app).post("/api/v1/search/hybrid", json={"query": "偏冷", "limit": 1})
+    assert response.status_code == 200
+    assert response.json()["items"][0]["result_id"] == str(cold.id)
+    assert response.json()["items"][0]["matched_structured_conditions"] == {
+        "tags": [], "numeric_filters": [],
+    }
+
+
+def test_hybrid_structured_only_uses_hard_and_filters_without_embedding_query(monkeypatch):
+    repository = InMemoryRepository()
+    reviews = ReviewService(repository)
+    match = add_case(repository, tags=["cinematic", "restrained"], shadow=.6)
+    wrong_tag = add_case(repository, tags=["restrained"], shadow=.8)
+    too_light = add_case(repository, tags=["cinematic"], shadow=.2)
+    for result in [match, wrong_tag, too_light]:
+        confirm(reviews, result)
+    request = HybridSearchRequest(tags=["cinematic"], numeric_filters=[
+        {"field": "shadow_occupancy", "op": "gte", "value": .4},
+    ], limit=10)
+    hybrid = HybridSearchService(repository, None)
+    matches = hybrid.search(request)
+    assert [item.result_id for item in matches] == [match.id]
+    assert matches[0].similarity is None
+    assert matches[0].matched_structured_conditions.model_dump() == request.model_dump(exclude={"query", "limit"})
+    monkeypatch.setattr(main, "hybrid_search_service", hybrid)
+    response = TestClient(main.app).post("/api/v1/search/hybrid", json=request.model_dump())
+    assert response.status_code == 200
+    assert [item["result_id"] for item in response.json()["items"]] == [str(match.id)]
+
+
+def test_hybrid_filters_before_semantic_ranking_and_excludes_invalid_candidates(monkeypatch):
+    repository = InMemoryRepository()
+    adapter = FakeEmbeddingAdapter()
+    semantic = SemanticSearchService(repository, adapter)
+    reviews = ReviewService(repository, semantic)
+    similar_but_filtered = add_case(repository, "quiet cold", tags=["cinematic"], shadow=.2)
+    eligible_but_distant = add_case(repository, "bright warm", tags=["cinematic"], shadow=.8)
+    unconfirmed = add_case(repository, "quiet cold", tags=["cinematic"], shadow=.9)
+    confirm(reviews, similar_but_filtered)
+    confirm(reviews, eligible_but_distant)
+    assert repository.get_case_embedding(unconfirmed.id) is None
+    hybrid = HybridSearchService(repository, adapter)
+    request = HybridSearchRequest(
+        query="偏冷", tags=["cinematic"],
+        numeric_filters=[{"field": "shadow_occupancy", "op": "gte", "value": .4}], limit=10,
+    )
+    matches = hybrid.search(request)
+    assert [item.result_id for item in matches] == [eligible_but_distant.id]
+    assert matches[0].similarity == pytest.approx(0.0)
+    monkeypatch.setattr(main, "hybrid_search_service", hybrid)
+    response = TestClient(main.app).post("/api/v1/search/hybrid", json=request.model_dump())
+    assert response.status_code == 200
+    assert [item["result_id"] for item in response.json()["items"]] == [str(eligible_but_distant.id)]

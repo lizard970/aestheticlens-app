@@ -7,12 +7,13 @@ from fastapi.responses import Response
 from .config import load_analysis_profiles
 from .embeddings import EmbeddingError, configured_embedding_adapter
 from .models import (AnalysisJob, AnalysisJobCreate, AnalysisResultView, Asset, Capability,
-                     Feedback, FeedbackCreate, SemanticSearchRequest, StructuredSearchRequest)
+                     Feedback, FeedbackCreate, HybridSearchRequest, SemanticSearchRequest,
+                     StructuredSearchRequest)
 from .repositories import repository_from_env
 from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
-from .knowledge import SemanticSearchService, StoredKnowledgeRepository
+from .knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
@@ -21,6 +22,7 @@ repository = repository_from_env()
 analysis_service = MockAnalysisService(repository)
 embedding_adapter = configured_embedding_adapter()
 semantic_search_service = SemanticSearchService(repository, embedding_adapter) if embedding_adapter else None
+hybrid_search_service = HybridSearchService(repository, embedding_adapter)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -32,7 +34,7 @@ def get_capabilities() -> dict[str, list[Capability]]:
         Capability(code="hybrid_retrieval", status="not_implemented"),
         Capability(code="structured_search", status="available", version="1.0"),
         Capability(code="semantic_search", status="available", version="1.0"),
-        Capability(code="hybrid_search", status="not_implemented"),
+        Capability(code="hybrid_search", status="available", version="1.0"),
         Capability(code="evaluation_runner", status="not_implemented"),
     ]}
 
@@ -145,3 +147,12 @@ def semantic_search(query: SemanticSearchRequest):
         return {"items": semantic_search_service.search(query)}
     except EmbeddingError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/search/hybrid")
+def hybrid_search(query: HybridSearchRequest):
+    try:
+        return {"items": hybrid_search_service.search(query)}
+    except EmbeddingError as exc:
+        status_code = 503 if str(exc) == "SEMANTIC_SEARCH_NOT_CONFIGURED" else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc

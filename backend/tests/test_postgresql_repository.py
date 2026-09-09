@@ -3,9 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.knowledge import SemanticSearchService, StoredKnowledgeRepository
+from app.knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
 from app.models import (AnalysisJob, AnalysisResult, AnalysisTarget, Asset, DimensionResult,
-                        FeatureResult, FeedbackCreate, SemanticSearchRequest, StructuredSearchRequest)
+                        FeatureResult, FeedbackCreate, HybridSearchRequest, SemanticSearchRequest,
+                        StructuredSearchRequest)
 from app.repositories import PostgreSQLRepository
 from app.reviews import ReviewService
 
@@ -58,3 +59,8 @@ def test_restart_persistence_revision_history_and_structured_search():
     )
     assert [hit.result_id for hit in semantic_hits] == [result.id]
     assert restarted.get_case_embedding(result.id).source_text.startswith("Summary: Persistent case")
+    hybrid_hits = HybridSearchService(restarted, PersistentFakeEmbeddingAdapter()).search(HybridSearchRequest(
+        query="persistent", tags=[unique_tag],
+        numeric_filters=[{"field": "value", "op": "gte", "value": .75}], limit=1,
+    ))
+    assert [hit.result_id for hit in hybrid_hits] == [result.id]
