@@ -1,5 +1,11 @@
 # Codex Handoff
 
+## Knowledge Answer slice
+
+Added `POST /api/v1/knowledge/answers`, using existing Hybrid Search and Chat Completions configuration. Context uses current accepted interpretations, summary, tags and resolved referenced numeric facts. Similarity cutoff is configurable (default 0.3). Empty/irrelevant retrieval skips the LLM; invalid citations return insufficient evidence. Existing search endpoints and user-owned adapter/prompt/launcher edits are preserved. No migration or UI changes.
+
+Backend validation: `python -m pytest -q` — 87 passed, 1 PostgreSQL integration skip (test database not configured). Tests cover retrieved context, human edits, eligibility exclusions, relevance cutoff, citations and the HTTP/provider contract. `pnpm test` — 15 passed; `pnpm typecheck`, `pnpm build`, and `git diff --check` passed. No live model calls were made.
+
 ## Smallest hybrid-search slice (2026-09-09)
 
 Implemented `POST /api/v1/search/hybrid`. Existing structured tags/numeric filters remain hard AND constraints, and pgvector cosine similarity ranks only the eligible result IDs that pass them. Query-only and structured-only requests are supported; structured-only results return `similarity: null` without calling the embedding provider. The new `field` numeric contract supports full feature references, unambiguous leaf names, and the explicit `shadow_occupancy` → `feature:tonal_occupancy#/shadow_share` alias. Existing structured and semantic endpoints are unchanged. No UI, RAG, reranker, or collections were added.
