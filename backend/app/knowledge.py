@@ -3,9 +3,10 @@ import operator
 from typing import Protocol
 from uuid import UUID
 
-from .embeddings import EmbeddingAdapter
+from .embeddings import EmbeddingAdapter, EmbeddingError
 from .evidence import resolve_evidence
-from .models import (AnalysisResult, HumanRevision, SearchableCase, SemanticSearchCase,
+from .models import (AnalysisResult, HumanRevision, HybridSearchCase, HybridSearchRequest,
+                     MatchedStructuredConditions, SearchableCase, SemanticSearchCase,
                      SemanticSearchRequest, StoredCaseEmbedding, StructuredSearchRequest)
 from .repositories import Repository
 from .reviews import ReviewService
@@ -27,6 +28,31 @@ def searchable_revision(repository: Repository, result: AnalysisResult) -> Human
     if any(item.status != "resolved" for item in resolve_evidence(result)):
         return None
     return revision
+
+
+HYBRID_FIELD_ALIASES = {
+    "shadow_occupancy": "feature:tonal_occupancy#/shadow_share",
+}
+
+
+def resolve_hybrid_field(values: dict, field: str) -> str | None:
+    if field in HYBRID_FIELD_ALIASES:
+        return HYBRID_FIELD_ALIASES[field]
+    if field.startswith("feature:"):
+        return field
+    matches = [reference for reference in values if reference.rsplit("/", 1)[-1] == field]
+    return matches[0] if len(matches) == 1 else None
+
+
+def passes_numeric_filters(result: AnalysisResult, filters) -> bool:
+    compare = {"eq": operator.eq, "gt": operator.gt, "gte": operator.ge, "lt": operator.lt, "lte": operator.le}
+    values = feature_evidence(result.features)
+    for condition in filters:
+        reference = resolve_hybrid_field(values, condition.field)
+        value = values.get(reference) if reference else None
+        if type(value) not in {int, float} or not math.isfinite(value) or not compare[condition.op](value, condition.value):
+            return False
+    return True
 
 
 class StoredKnowledgeRepository:
@@ -103,6 +129,56 @@ class SemanticSearchService:
                 continue
             matches.append(SemanticSearchCase(
                 asset_id=asset.id, result_id=result.id, similarity=similarity, tags=result.tags,
+                original_filename=asset.original_filename,
+                preview_url=f"/api/v1/assets/{asset.id}/content", revision=revision.revision,
+                preview_text=revision.dimensions[0].interpretation,
+            ))
+        return matches
+
+
+class HybridSearchService:
+    def __init__(self, repository: Repository, adapter: EmbeddingAdapter | None) -> None:
+        self.repository = repository
+        self.adapter = adapter
+
+    def search(self, query: HybridSearchRequest) -> list[HybridSearchCase]:
+        candidates = {}
+        for result in self.repository.list_results():
+            revision = searchable_revision(self.repository, result)
+            if revision is None or not set(query.tags).issubset(result.tags):
+                continue
+            if not passes_numeric_filters(result, query.numeric_filters):
+                continue
+            job = self.repository.get_job(result.job_id)
+            asset = self.repository.get_asset(job.target.id) if job else None
+            if asset is not None:
+                candidates[result.id] = (result, revision, asset)
+
+        if query.query is not None:
+            if self.adapter is None:
+                raise EmbeddingError("SEMANTIC_SEARCH_NOT_CONFIGURED")
+            if not candidates:
+                return []
+            ranked = self.repository.search_case_embeddings(
+                self.adapter.embed(query.query), query.limit, list(candidates)
+            )
+            ordered = [(stored.result_id, similarity, stored.revision) for stored, similarity in ranked]
+        else:
+            ordered = [(result_id, None, candidates[result_id][1].revision)
+                       for result_id in list(candidates)[:query.limit]]
+
+        conditions = MatchedStructuredConditions(tags=query.tags, numeric_filters=query.numeric_filters)
+        matches = []
+        for result_id, similarity, stored_revision in ordered:
+            candidate = candidates.get(result_id)
+            if candidate is None:
+                continue
+            result, revision, asset = candidate
+            if revision.revision != stored_revision:
+                continue
+            matches.append(HybridSearchCase(
+                asset_id=asset.id, result_id=result.id, similarity=similarity, tags=result.tags,
+                matched_structured_conditions=conditions,
                 original_filename=asset.original_filename,
                 preview_url=f"/api/v1/assets/{asset.id}/content", revision=revision.revision,
                 preview_text=revision.dimensions[0].interpretation,

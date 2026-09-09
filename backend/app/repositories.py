@@ -26,7 +26,8 @@ class Repository(Protocol):
     def upsert_case_embedding(self, embedding: StoredCaseEmbedding) -> None: ...
     def delete_case_embedding(self, result_id: UUID) -> None: ...
     def get_case_embedding(self, result_id: UUID) -> StoredCaseEmbedding | None: ...
-    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]: ...
+    def search_case_embeddings(self, embedding: list[float], limit: int,
+                               result_ids: list[UUID] | None = None) -> list[tuple[StoredCaseEmbedding, float]]: ...
 
 
 class InMemoryRepository:
@@ -96,13 +97,17 @@ class InMemoryRepository:
         embedding = self.case_embeddings.get(result_id)
         return embedding.model_copy(deep=True) if embedding else None
 
-    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]:
+    def search_case_embeddings(self, embedding: list[float], limit: int,
+                               result_ids: list[UUID] | None = None) -> list[tuple[StoredCaseEmbedding, float]]:
         def cosine(candidate: StoredCaseEmbedding) -> float:
             dot = sum(left * right for left, right in zip(candidate.embedding, embedding, strict=True))
             left_norm = math.sqrt(sum(value * value for value in candidate.embedding))
             right_norm = math.sqrt(sum(value * value for value in embedding))
             return dot / (left_norm * right_norm) if left_norm and right_norm else 0.0
-        ranked = sorted(((item, cosine(item)) for item in self.case_embeddings.values()),
+        allowed = set(result_ids) if result_ids is not None else None
+        candidates = (item for item in self.case_embeddings.values()
+                      if allowed is None or item.result_id in allowed)
+        ranked = sorted(((item, cosine(item)) for item in candidates),
                         key=lambda pair: pair[1], reverse=True)
         return [(item.model_copy(deep=True), score) for item, score in ranked[:limit]]
 
@@ -269,14 +274,17 @@ class PostgreSQLRepository:
         return StoredCaseEmbedding(result_id=row[0], revision=row[1], model=row[2], source_text=row[3],
                                    embedding=json.loads(row[4]))
 
-    def search_case_embeddings(self, embedding: list[float], limit: int) -> list[tuple[StoredCaseEmbedding, float]]:
+    def search_case_embeddings(self, embedding: list[float], limit: int,
+                               result_ids: list[UUID] | None = None) -> list[tuple[StoredCaseEmbedding, float]]:
         vector = self._vector_literal(embedding)
+        where = "" if result_ids is None else "WHERE result_id = ANY(%s::uuid[])"
+        parameters = (vector, vector, limit) if result_ids is None else (vector, result_ids, vector, limit)
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT result_id, revision, model, source_text, embedding::text, "
                 "1 - (embedding <=> %s::vector) AS similarity "
-                "FROM knowledge_case_embeddings ORDER BY embedding <=> %s::vector LIMIT %s",
-                (vector, vector, limit),
+                f"FROM knowledge_case_embeddings {where} ORDER BY embedding <=> %s::vector LIMIT %s",
+                parameters,
             ).fetchall()
         return [(StoredCaseEmbedding(result_id=row[0], revision=row[1], model=row[2], source_text=row[3],
                                      embedding=json.loads(row[4])), float(row[5])) for row in rows]
