@@ -1,5 +1,11 @@
 # Codex Handoff
 
+## psycopg3 executemany compatibility fix (2026-09-09)
+
+Updated both batch inserts in `PostgreSQLRepository.save_result()` to call `executemany()` on a cursor created by `connection.cursor()`. A backend-wide scan found no other `Connection.executemany` usage. Behavior and transaction scope are unchanged.
+
+Validation: `python -m pytest -q tests/test_postgresql_repository.py` — 1 skipped because `AESTHETICLENS_TEST_DATABASE_URL` is not configured on this host; `python -m pytest -q` — 75 passed, 1 skipped.
+
 ## Smallest semantic-search slice (2026-09-09)
 
 Implemented a replaceable `EmbeddingAdapter` with an env-configured OpenAI embeddings adapter, one 1536-dimensional pgvector row per currently searchable confirmed real case, and `POST /api/v1/search/semantic`. Embedding input is limited to summary, style tags, and current reviewed dimension interpretations; edited human text wins, and raw feature JSON is excluded. Feedback transitions synchronously upsert or delete the case embedding. Structured search is unchanged; no hybrid search, RAG, collections, or reranker were added.
