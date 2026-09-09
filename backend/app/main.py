@@ -1,4 +1,5 @@
 from uuid import UUID
+import os
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
 from .knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
+from .answers import AnswerError, AnswerRequest, ChatAnswerAdapter, KnowledgeAnswer, KnowledgeAnswerService
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
@@ -24,6 +26,16 @@ embedding_adapter = configured_embedding_adapter()
 semantic_search_service = SemanticSearchService(repository, embedding_adapter) if embedding_adapter else None
 hybrid_search_service = HybridSearchService(repository, embedding_adapter)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
+
+
+@app.post("/api/v1/knowledge/answers", response_model=KnowledgeAnswer)
+def knowledge_answer(request: AnswerRequest):
+    try:
+        return KnowledgeAnswerService(repository, hybrid_search_service, ChatAnswerAdapter(),
+                                      float(os.getenv("AESTHETICLENS_ANSWER_MIN_SIMILARITY", "0.3"))).answer(request)
+    except (AnswerError, EmbeddingError) as exc:
+        code = str(exc)
+        raise HTTPException(status_code=503 if code.endswith("NOT_CONFIGURED") else 502, detail=code) from None
 
 
 @app.get("/api/v1/capabilities")
