@@ -49,7 +49,22 @@ export interface AnalysisResult {
   completionStatus: 'complete' | 'partial';
   resolvedEvidence?: ResolvedEvidence[];
   humanRevision?: HumanRevision;
+  feedbackHistory?: FeedbackEntry[];
   previewUrl?: string;
+}
+
+export interface FeedbackEntry {
+  id: string;
+  result_id: string;
+  revision: number;
+  feedback_type: 'accept' | 'edit' | 'reject' | 'flag_error';
+  created_at: string;
+  target_path: string | null;
+  original_value: unknown;
+  corrected_value: unknown;
+  error_category: string | null;
+  comment: string | null;
+  base_revision: number | null;
 }
 
 export interface ResolvedEvidence {
@@ -73,8 +88,8 @@ export interface DimensionFeedback {
   feedback_type: 'accept' | 'edit' | 'reject';
   target_path: string;
   corrected_value?: { observation: string; interpretation: string };
-  comment?: string;
-  error_category?: string;
+  comment: string | null;
+  error_category: string | null;
   base_revision: number;
 }
 

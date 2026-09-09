@@ -65,13 +65,14 @@ class ReviewService:
 
     def view(self, result_id: UUID, revision: int | None = None) -> AnalysisResultView:
         original = self.original(result_id)
-        job = self.repository.jobs.get(original.job_id)
+        job = self.repository.get_job(original.job_id)
         if job is None:
             raise LookupError("ANALYSIS_JOB_NOT_FOUND")
         return AnalysisResultView(**original.model_dump(), evidence=resolve_evidence(original),
                                   human_revision=self.revision(result_id, revision), asset_id=job.target.id,
-                                  preview_url=f"/api/v1/assets/{job.target.id}/content")
+                                  preview_url=f"/api/v1/assets/{job.target.id}/content",
+                                  feedback_history=list(reversed(self.repository.read_feedback(result_id))))
 
     def history(self, result_id: UUID):
-        return {"original_result": self.original(result_id), "feedback": self.repository.read_feedback(result_id),
+        return {"original_result": self.original(result_id), "feedback": list(reversed(self.repository.read_feedback(result_id))),
                 "latest_revision": self.revision(result_id)}

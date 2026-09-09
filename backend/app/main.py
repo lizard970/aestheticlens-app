@@ -6,7 +6,7 @@ from fastapi.responses import Response
 
 from .config import load_analysis_profiles
 from .models import AnalysisJob, AnalysisJobCreate, AnalysisResultView, Asset, Capability, Feedback, FeedbackCreate, StructuredSearchRequest
-from .repositories import InMemoryRepository
+from .repositories import repository_from_env
 from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
@@ -15,7 +15,7 @@ from .knowledge import StoredKnowledgeRepository
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], allow_methods=["*"], allow_headers=["*"])
-repository = InMemoryRepository()
+repository = repository_from_env()
 analysis_service = MockAnalysisService(repository)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
 
@@ -44,20 +44,19 @@ async def create_asset(file: UploadFile = File(...)) -> Asset:
         raise HTTPException(status_code=415, detail="UNSUPPORTED_MEDIA_TYPE")
     body = await file.read()
     asset = Asset(original_filename=file.filename or "upload", mime_type=file.content_type, size_bytes=len(body))
-    repository.assets[asset.id] = asset
-    repository.asset_bytes[asset.id] = body
+    repository.save_asset(asset, body)
     return asset
 
 
 @app.post("/api/v1/analysis-jobs", status_code=status.HTTP_202_ACCEPTED)
 def create_analysis_job(payload: AnalysisJobCreate, idempotency_key: str | None = Header(default=None)) -> AnalysisJob:
     del idempotency_key  # Stage 1A accepts the contract; persistence will enforce it later.
-    if payload.target.id not in repository.assets:
+    if repository.get_asset(payload.target.id) is None:
         raise HTTPException(status_code=404, detail="ASSET_NOT_FOUND")
     if payload.analysis_profile_id not in load_analysis_profiles():
         raise HTTPException(status_code=404, detail="ANALYSIS_PROFILE_NOT_FOUND")
     job = AnalysisJob(**payload.model_dump())
-    repository.jobs[job.id] = job
+    repository.save_job(job)
     try:
         analysis_service.run(job)
     except ImageNormalizationError as exc:
@@ -67,7 +66,7 @@ def create_analysis_job(payload: AnalysisJobCreate, idempotency_key: str | None 
 
 @app.get("/api/v1/analysis-jobs/{job_id}")
 def get_analysis_job(job_id: UUID) -> AnalysisJob:
-    job = repository.jobs.get(job_id)
+    job = repository.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ANALYSIS_JOB_NOT_FOUND")
     return job
@@ -75,7 +74,7 @@ def get_analysis_job(job_id: UUID) -> AnalysisJob:
 
 @app.get("/api/v1/analysis-jobs/{job_id}/result")
 def get_analysis_result(job_id: UUID) -> AnalysisResultView:
-    result = repository.results.get(job_id)
+    result = repository.get_result_by_job(job_id)
     if not result:
         raise HTTPException(status_code=404, detail="ANALYSIS_RESULT_NOT_FOUND")
     return ReviewService(repository).view(result.id)
@@ -111,8 +110,8 @@ def read_result(result_id: UUID, revision: int | None = None) -> AnalysisResultV
 def list_result_history():
     items = []
     for result in reversed(repository.list_results()):
-        job = repository.jobs.get(result.job_id)
-        asset = repository.assets.get(job.target.id) if job else None
+        job = repository.get_job(result.job_id)
+        asset = repository.get_asset(job.target.id) if job else None
         if asset:
             items.append({"id": result.id, "job_id": job.id, "asset_id": asset.id,
                           "original_filename": asset.original_filename, "created_at": job.created_at,
@@ -122,8 +121,8 @@ def list_result_history():
 
 @app.get("/api/v1/assets/{asset_id}/content")
 def read_asset_content(asset_id: UUID):
-    asset = repository.assets.get(asset_id)
-    body = repository.asset_bytes.get(asset_id)
+    asset = repository.get_asset(asset_id)
+    body = repository.get_asset_bytes(asset_id)
     if asset is None or body is None:
         raise HTTPException(status_code=404, detail="ASSET_NOT_FOUND")
     return Response(content=body, media_type=asset.mime_type, headers={"X-Content-Type-Options": "nosniff"})

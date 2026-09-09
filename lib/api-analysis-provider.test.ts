@@ -20,6 +20,7 @@ it('recovers result and revision from GET, and saves via POST followed by server
       },
     ],
     human_revision: { revision: 2, dimensions: [] },
+    feedback_history: [],
     preview_url: '/api/v1/assets/asset-id/content',
   };
   const fetch = vi
@@ -37,6 +38,8 @@ it('recovers result and revision from GET, and saves via POST followed by server
   await provider.saveFeedback('result-id', {
     feedback_type: 'accept',
     target_path: '/dimensions/color',
+    comment: null,
+    error_category: null,
     base_revision: 2,
   });
   expect(fetch.mock.calls[1][1].method).toBe('POST');

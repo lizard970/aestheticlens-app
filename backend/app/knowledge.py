@@ -40,8 +40,8 @@ class StoredKnowledgeRepository:
                 return type(value) in {int, float} and math.isfinite(value) and compare[condition.op](value, condition.value)
             if not all(passes(condition) for condition in query.numeric_filters):
                 continue
-            job = self.repository.jobs.get(result.job_id)
-            asset = self.repository.assets.get(job.target.id) if job else None
+            job = self.repository.get_job(result.job_id)
+            asset = self.repository.get_asset(job.target.id) if job else None
             if asset is None:
                 continue
             matches.append(SearchableCase(asset_id=asset.id, result_id=result.id, job_id=job.id,

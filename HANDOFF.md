@@ -1,5 +1,13 @@
 # Codex Handoff
 
+## Stage 1D review history + PostgreSQL persistence (2026-09-09)
+
+Implemented per-dimension review counts and newest-first expandable history. Each card filters feedback by `/dimensions/<code>` (including field-level descendants), while optimistic concurrency continues to use the result-wide latest revision. Accept/edit/reject submit an explicit nullable `comment`; raw model results remain immutable and feedback remains append-only.
+
+Added a PostgreSQL repository behind the existing domain repository boundary for asset bytes/metadata, jobs, analysis results, feature results, resolved evidence, and feedback. Structured search continues to apply the existing eligibility, tag, numeric-operator, and AND rules in the knowledge service over repository data. Set `AESTHETICLENS_DATABASE_URL`, then run `cd backend; python -m app.migrate`. With no database URL, the in-memory repository remains available for tests/development. No vectors, embeddings, semantic retrieval, collections, or clustering were added.
+
+Validation: `backend: python -m pytest -q` — 71 passed, 1 PostgreSQL integration test skipped because `AESTHETICLENS_TEST_DATABASE_URL` was not configured on this host; `pnpm test` — 15 passed; `pnpm typecheck`, `pnpm build`, targeted changed-file `oxlint`, Python `compileall`, and `git diff --check` passed. The skipped integration test covers a new repository instance reading saved analysis/asset/feedback, revision order, and structured search from PostgreSQL.
+
 ## Stage 1D + structured search (current operator scope)
 
 Product baseline is now `aestheticlens_product_report_v0.2.md`; its stale Stage 1A next-step prose does not supersede the operator's current task. Complete the single-image evidence/per-dimension review/history slice, then structured tag/numeric AND search only. No extractor or multimodal adapter changes, collections, vectors or external calls. Commit locally without pushing. Existing unrelated local adapter/prompt/launcher edits remain user-owned and excluded from this commit.

@@ -19,12 +19,17 @@ class MockAnalysisService:
         job.status = JobStatus.RUNNING
         job.progress_stage = "normalizing"
         job.progress_percent = 20
+        self.repository.save_job(job)
         try:
-            image = normalize_image(self.repository.asset_bytes[job.target.id], load_feature_config())
+            content = self.repository.get_asset_bytes(job.target.id)
+            if content is None:
+                raise ImageNormalizationError("ASSET_NOT_FOUND")
+            image = normalize_image(content, load_feature_config())
         except ImageNormalizationError:
             job.status = JobStatus.FAILED
             job.progress_stage = "failed"
             job.progress_percent = 100
+            self.repository.save_job(job)
             raise
         job.progress_stage = "extracting_features"
         job.progress_percent = 55
@@ -35,6 +40,7 @@ class MockAnalysisService:
             job.status = JobStatus.FAILED
             job.progress_stage = "failed"
             job.progress_percent = 100
+            self.repository.save_job(job)
             raise ImageNormalizationError("ALL_FEATURE_EXTRACTORS_FAILED")
         job.progress_stage = "analyzing"
         job.progress_percent = 75
@@ -74,5 +80,6 @@ class MockAnalysisService:
         job.status = JobStatus.PARTIAL if partial else JobStatus.SUCCEEDED
         job.progress_stage = "complete"
         job.progress_percent = 100
-        self.repository.results[job.id] = result
+        self.repository.save_job(job)
+        self.repository.save_result(result)
         return result

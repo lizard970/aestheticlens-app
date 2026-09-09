@@ -16,3 +16,14 @@ python -m uvicorn app.main:app --reload --port 8000
 ```powershell
 python -m pytest
 ```
+
+持久化存储（未设置时仍使用内存仓储）：
+
+```powershell
+$env:AESTHETICLENS_DATABASE_URL='postgresql://USER:PASSWORD@localhost:5432/aestheticlens'
+python -m app.migrate
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+如需运行 PostgreSQL 重启持久化集成测试，将同一测试数据库连接串设置为
+`AESTHETICLENS_TEST_DATABASE_URL`。迁移仅创建基础表和索引，不包含向量、嵌入或语义检索。
