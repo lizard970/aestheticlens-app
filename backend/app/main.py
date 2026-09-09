@@ -2,12 +2,15 @@ from uuid import UUID
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from .config import load_analysis_profiles
-from .models import AnalysisJob, AnalysisJobCreate, AnalysisResult, Asset, Capability, Feedback, FeedbackCreate
+from .models import AnalysisJob, AnalysisJobCreate, AnalysisResultView, Asset, Capability, Feedback, FeedbackCreate, StructuredSearchRequest
 from .repositories import InMemoryRepository
 from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
+from .reviews import ReviewService
+from .knowledge import StoredKnowledgeRepository
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
@@ -23,6 +26,9 @@ def get_capabilities() -> dict[str, list[Capability]]:
         Capability(code="single_image_analysis", status="available", version="0.1"),
         Capability(code="video_shot_detection", status="not_implemented"),
         Capability(code="hybrid_retrieval", status="not_implemented"),
+        Capability(code="structured_search", status="available", version="1.0"),
+        Capability(code="semantic_search", status="not_implemented"),
+        Capability(code="hybrid_search", status="not_implemented"),
         Capability(code="evaluation_runner", status="not_implemented"),
     ]}
 
@@ -68,17 +74,61 @@ def get_analysis_job(job_id: UUID) -> AnalysisJob:
 
 
 @app.get("/api/v1/analysis-jobs/{job_id}/result")
-def get_analysis_result(job_id: UUID) -> AnalysisResult:
+def get_analysis_result(job_id: UUID) -> AnalysisResultView:
     result = repository.results.get(job_id)
     if not result:
         raise HTTPException(status_code=404, detail="ANALYSIS_RESULT_NOT_FOUND")
-    return result
+    return ReviewService(repository).view(result.id)
 
 
 @app.post("/api/v1/analysis-results/{result_id}/feedback", status_code=status.HTTP_201_CREATED)
 def create_feedback(result_id: UUID, payload: FeedbackCreate) -> Feedback:
-    if not any(result.id == result_id for result in repository.results.values()):
-        raise HTTPException(status_code=404, detail="ANALYSIS_RESULT_NOT_FOUND")
-    feedback = Feedback(result_id=result_id, **payload.model_dump())
-    repository.feedback.setdefault(result_id, []).append(feedback)
-    return feedback
+    try:
+        return ReviewService(repository).save(result_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if str(exc) == "REVISION_CONFLICT" else 422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/analysis-results/{result_id}/feedback")
+def read_feedback(result_id: UUID):
+    try:
+        return ReviewService(repository).history(result_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/analysis-results/{result_id}")
+def read_result(result_id: UUID, revision: int | None = None) -> AnalysisResultView:
+    try:
+        return ReviewService(repository).view(result_id, revision)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/analysis-results")
+def list_result_history():
+    items = []
+    for result in reversed(repository.list_results()):
+        job = repository.jobs.get(result.job_id)
+        asset = repository.assets.get(job.target.id) if job else None
+        if asset:
+            items.append({"id": result.id, "job_id": job.id, "asset_id": asset.id,
+                          "original_filename": asset.original_filename, "created_at": job.created_at,
+                          "summary": result.summary})
+    return {"items": items}
+
+
+@app.get("/api/v1/assets/{asset_id}/content")
+def read_asset_content(asset_id: UUID):
+    asset = repository.assets.get(asset_id)
+    body = repository.asset_bytes.get(asset_id)
+    if asset is None or body is None:
+        raise HTTPException(status_code=404, detail="ASSET_NOT_FOUND")
+    return Response(content=body, media_type=asset.mime_type, headers={"X-Content-Type-Options": "nosniff"})
+
+
+@app.post("/api/v1/search/structured")
+def structured_search(query: StructuredSearchRequest):
+    return {"items": StoredKnowledgeRepository(repository).search(query)}

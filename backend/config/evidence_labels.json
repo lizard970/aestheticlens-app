@@ -1,0 +1,16 @@
+{
+  "feature:cie_lightness#/mean": "平均感知明度 L*",
+  "feature:cie_lightness#/median": "典型感知明度 L*",
+  "feature:relative_luminance#/mean": "平均相对亮度 Y",
+  "feature:global_tonal_contrast#/lstar_p95_p05_span": "全局色调跨度 p95-p05",
+  "feature:global_tonal_contrast#/lstar_iqr": "明度 IQR",
+  "feature:global_tonal_contrast#/lstar_standard_deviation": "明度标准差",
+  "feature:cie_chroma#/mean": "平均彩度 C*ab",
+  "feature:chromatic_occupancy#/chromatic_share": "有彩色像素占比",
+  "feature:space_structure#/empty_space_ratio": "低信息区域占比",
+  "feature:space_structure#/spatial_complexity/score": "空间复杂度",
+  "feature:composition_geometry#/negative_space_ratio": "构图留白占比",
+  "feature:composition_geometry#/visual_center_offset/normalized_distance": "视觉中心偏移",
+  "feature:composition_geometry#/symmetry_score/mean": "结构对称性",
+  "feature:composition_geometry#/rule_of_thirds_score/score": "三分法接近度"
+}

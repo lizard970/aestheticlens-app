@@ -2,15 +2,15 @@
 
 import { ColorComputationalFeatures } from '@/components/color-computational-features';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Aperture, BookOpenText, Check, ChevronRight, CircleAlert, FlaskConical, ImagePlus, Layers3, LoaderCircle, MessageSquareText, Search, SlidersHorizontal, Sparkles, Upload, Video } from 'lucide-react';
+import { Aperture, BookOpenText, ChevronRight, CircleAlert, FlaskConical, ImagePlus, Layers3, LoaderCircle, MessageSquareText, Search, SlidersHorizontal, Sparkles, Upload, Video } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_ANALYSIS_PROFILE } from '@/lib/analysis-profile';
-import type { AnalysisResult, AnalysisStage, FeedbackDraft, UploadedAsset } from '@/lib/aesthetic-domain';
-import { MockAnalysisProvider } from '@/lib/mock-analysis-provider';
+import type { AnalysisResult, AnalysisStage, UploadedAsset } from '@/lib/aesthetic-domain';
+import { DimensionReview } from '@/components/dimension-review';
+import { ResultHistory } from '@/components/result-history';
 import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
 import { ComputationalFeatures } from '@/components/computational-features';
 import { analysisPresentation } from '@/lib/analysis-presentation';
@@ -33,7 +33,7 @@ const navItems = [
   { label: '审美档案', icon: Sparkles, active: false, available: false },
 ];
 
-const provider = typeof window === 'undefined' ? new MockAnalysisProvider() : new ApiAnalysisProvider();
+const provider = new ApiAnalysisProvider();
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function createAsset(file: File): Promise<UploadedAsset> {
@@ -53,53 +53,46 @@ export function AestheticWorkspace() {
   const [stage, setStage] = useState<AnalysisStage>('idle');
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<FeedbackDraft>({ verdict: null, note: '' });
-  const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const selection = useRef(0);
   const status = stageMeta[stage];
   const presentation = analysisPresentation(result);
   const isRunning = ['extracting', 'analyzing', 'building'].includes(stage);
+  const previewUrl = asset?.previewUrl ?? result?.previewUrl;
 
   useEffect(() => () => { if (asset) URL.revokeObjectURL(asset.previewUrl); }, [asset]);
 
   const fileMeta = useMemo(() => asset ? `${asset.width} × ${asset.height} · ${(asset.file.size / 1024 / 1024).toFixed(2)} MB` : null, [asset]);
 
   useEffect(() => {
-    if (!result || !document.modelContext?.registerTool) return;
-    const lifecycle = new AbortController();
-    const allowedVerdicts = ['accepted', 'edited', 'flagged'] as const;
+    const id = new URL(window.location.href).searchParams.get('result_id');
+    if (!id) return;
+    let active = true;
+    const version = selection.current;
+    void provider.getResult(id).then(restored => {
+      if (active && version === selection.current) { setResult(restored); setStage('complete'); }
+    }).catch(() => { if (active && version === selection.current) setError('历史结果不可用；当前内存仓储在服务重启后会清空。'); });
+    return () => { active = false; };
+  }, []);
 
-    void Promise.resolve(document.modelContext.registerTool({
-      name: 'save_analysis_feedback',
-      title: '保存分析反馈',
-      description: '为当前可见的美学分析保存认可、修改或错误标记，并同步更新页面反馈状态。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          verdict: { type: 'string', enum: allowedVerdicts },
-          note: { type: 'string', maxLength: 2000 },
-        },
-        required: ['verdict'],
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: false, untrustedContentHint: false },
-      execute(input: unknown) {
-        if (!input || typeof input !== 'object') throw new Error('反馈参数必须是对象。');
-        const payload = input as { verdict?: string; note?: string };
-        if (!allowedVerdicts.includes(payload.verdict as (typeof allowedVerdicts)[number])) throw new Error('不支持的反馈类型。');
-        if (payload.note !== undefined && typeof payload.note !== 'string') throw new Error('反馈备注必须是文本。');
-        const verdict = payload.verdict as FeedbackDraft['verdict'];
-        setFeedback({ verdict, note: payload.note ?? '' });
-        setFeedbackSaved(true);
-        return { resultId: result.id, saved: true, verdict };
-      },
-    }, { signal: lifecycle.signal })).catch(() => undefined);
+  function rememberResult(id?: string) {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('result_id', id); else url.searchParams.delete('result_id');
+    window.history.replaceState(null, '', url);
+  }
 
-    return () => lifecycle.abort();
-  }, [result]);
+  async function openHistory(id: string) {
+    const version = ++selection.current;
+    try {
+      const restored = await provider.getResult(id);
+      if (version !== selection.current) return;
+      setAsset(null); setResult(restored); setStage('complete'); setError(null); rememberResult(id);
+    } catch { if (version === selection.current) setError('历史结果读取失败，请重试。'); }
+  }
 
   async function handleFile(file?: File) {
     if (!file) return;
-    setError(null); setResult(null); setFeedback({ verdict: null, note: '' }); setFeedbackSaved(false);
+    selection.current += 1;
+    rememberResult(); setError(null); setResult(null);
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setError('当前支持 JPG、PNG 和 WebP 图片。'); return;
     }
@@ -114,13 +107,17 @@ export function AestheticWorkspace() {
 
   async function runAnalysis() {
     if (!asset || isRunning) return;
+    const version = ++selection.current;
     setError(null); setResult(null);
     try {
       setStage('extracting'); await wait(450);
       setStage('analyzing'); const nextResult = await provider.analyze(asset);
+      if (version !== selection.current) return;
       setStage('building'); await wait(350);
-      setResult(nextResult); setStage('complete');
+      if (version !== selection.current) return;
+      setResult(nextResult); setStage('complete'); rememberResult(nextResult.id);
     } catch {
+      if (version !== selection.current) return;
       setError('分析任务未完成，请重新运行。'); setStage('ready');
     }
   }
@@ -152,6 +149,7 @@ export function AestheticWorkspace() {
         </aside>
 
         <section className="min-w-0 p-4 lg:p-6">
+          <ResultHistory load={() => provider.history()} onSelect={id => void openHistory(id)} disabled={isRunning} />
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div><p className="mb-1 text-xs font-medium uppercase tracking-[0.18em] text-amber-300/80">Frame review 001</p><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">素材分析</h1></div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>{DEFAULT_ANALYSIS_PROFILE.name}</span><ChevronRight className="size-4" /><span>v{DEFAULT_ANALYSIS_PROFILE.version}</span></div>
@@ -161,9 +159,9 @@ export function AestheticWorkspace() {
             <section className="overflow-hidden rounded-2xl border border-white/9 bg-card shadow-2xl shadow-black/15">
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3"><div className="flex items-center gap-2"><Layers3 className="size-4 text-amber-300" /><h2 className="text-sm font-medium">画面与证据层</h2></div>{asset && <span className="text-xs text-muted-foreground">{fileMeta}</span>}</div>
               <div className="relative flex aspect-[16/10] min-h-[360px] items-center justify-center bg-[#090b0d] p-5" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void handleFile(event.dataTransfer.files[0]); }}>
-                {asset ? <>
+                {previewUrl ? <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={asset.previewUrl} alt="待分析素材" className="max-h-full max-w-full object-contain shadow-2xl" />
+                  <img src={previewUrl} alt="待分析素材" className="max-h-full max-w-full object-contain shadow-2xl" />
                 </> : <button type="button" onClick={() => inputRef.current?.click()} className="group flex max-w-md flex-col items-center rounded-2xl border border-dashed border-white/15 px-8 py-12 text-center transition hover:border-amber-300/45 hover:bg-amber-300/4">
                   <span className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground transition group-hover:text-amber-300"><ImagePlus className="size-6" /></span>
                   <span className="font-medium">拖入一张画面，或点击选择文件</span><span className="mt-2 text-sm text-muted-foreground">JPG、PNG、WebP · 本阶段只处理单张图片</span>
@@ -174,7 +172,7 @@ export function AestheticWorkspace() {
                 {error && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/8 px-3 py-2 text-sm text-red-200"><CircleAlert className="size-4" />{error}</div>}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-[220px] flex-1"><Progress value={status.progress} className="[&_[data-slot=progress-indicator]]:bg-amber-300 [&_[data-slot=progress-track]]:bg-white/8"><ProgressLabel className="text-sm">{status.label}</ProgressLabel><ProgressValue /></Progress></div>
-                  <div className="flex gap-2">{asset && <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={isRunning} className="border-white/10 bg-white/3"><Upload data-icon="inline-start" />更换图片</Button>}<Button onClick={() => void runAnalysis()} disabled={!asset || isRunning} className="bg-amber-300 text-black hover:bg-amber-200">{isRunning ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}{result ? '重新分析' : '开始分析'}</Button></div>
+                  <div className="flex gap-2">{previewUrl && <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={isRunning} className="border-white/10 bg-white/3"><Upload data-icon="inline-start" />更换图片</Button>}<Button onClick={() => void runAnalysis()} disabled={!asset || isRunning} className="bg-amber-300 text-black hover:bg-amber-200">{isRunning ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}{result ? '重新分析' : '开始分析'}</Button></div>
                 </div>
               </div>
             </section>
@@ -221,7 +219,7 @@ export function AestheticWorkspace() {
 
       <div className="rounded-xl bg-white/3 p-4">
         <p className="text-xs font-medium text-cyan-200">
-          观察
+          原始观察
         </p>
         <p className="mt-2 leading-6">
           {dimension.observation}
@@ -231,7 +229,7 @@ export function AestheticWorkspace() {
       <div className="rounded-xl border border-amber-300/12 bg-amber-300/5 p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-amber-200">
-            解释
+            原始解释
           </p>
 
           <span className="font-mono text-xs text-muted-foreground">
@@ -246,33 +244,15 @@ export function AestheticWorkspace() {
 
       <div>
         {dimension.code === 'style' && <p className="mb-2 text-sm">风格标签：{result.tags.length ? result.tags.join(' · ') : '暂无可确认标签'}</p>}
-        <p className="mb-2 text-xs font-medium text-muted-foreground">
-          证据引用
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {dimension.evidence.map((item) => (
-            <Badge
-              key={item}
-              variant="outline"
-              className="border-white/10"
-            >
-              {item}
-            </Badge>
-          ))}
-        </div>
+        <DimensionReview key={`${result.id}:${dimension.code}`} result={result} dimension={dimension}
+          save={(id, feedback) => provider.saveFeedback(id, feedback)}
+          onSaved={updated => setResult(current => current?.id === updated.id && (updated.humanRevision?.revision ?? 0) >= (current.humanRevision?.revision ?? 0) ? updated : current)} />
       </div>
 
     </div>
   </TabsContent>
 ))}
                 </Tabs>
-                <div className="mt-6 border-t border-white/8 pt-5">
-                  <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-medium">这份分析是否有用？</h3>{feedbackSaved && <span className="flex items-center gap-1 text-xs text-cyan-200"><Check className="size-3.5" />已保存到当前会话</span>}</div>
-                  <div className="mb-3 flex flex-wrap gap-2">{([['accepted', '认可分析'], ['edited', '需要修改'], ['flagged', '标记错误']] as const).map(([value, label]) => <Button key={value} variant={feedback.verdict === value ? 'secondary' : 'outline'} size="sm" className={feedback.verdict === value ? 'bg-cyan-300/12 text-cyan-100' : 'border-white/10 bg-white/3'} onClick={() => { setFeedback((current) => ({ ...current, verdict: value })); setFeedbackSaved(false); }}>{label}</Button>)}</div>
-                  <Textarea value={feedback.note} onChange={(event) => { setFeedback((current) => ({ ...current, note: event.target.value })); setFeedbackSaved(false); }} placeholder="指出哪条观察或解释需要调整……" className="min-h-20 border-white/10 bg-black/15" />
-                  <Button onClick={() => feedback.verdict && setFeedbackSaved(true)} disabled={!feedback.verdict} className="mt-3 w-full bg-cyan-300 text-black hover:bg-cyan-200">保存反馈</Button>
-                </div>
               </>}
             </section>
           </div>

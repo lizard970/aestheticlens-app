@@ -1,5 +1,13 @@
 # Codex Handoff
 
+## Stage 1D + structured search (current operator scope)
+
+Product baseline is now `aestheticlens_product_report_v0.2.md`; its stale Stage 1A next-step prose does not supersede the operator's current task. Complete the single-image evidence/per-dimension review/history slice, then structured tag/numeric AND search only. No extractor or multimodal adapter changes, collections, vectors or external calls. Commit locally without pushing. Existing unrelated local adapter/prompt/launcher edits remain user-owned and excluded from this commit.
+
+Implemented: resolved evidence response and compact UI; append-only feedback with raw originals and revision recovery; history/preview retrieval; confirmed-real-case KnowledgeRepository and structured search capability. Details and durability boundary: `docs/stage-1d-structured-search.md`. Existing memory storage remains replaceable; cross-backend-restart recovery requires the next PostgreSQL persistence slice.
+
+Validation: `backend: python -m pytest -q` — 64 passed; `pnpm test` — 14 passed; `pnpm typecheck`, `pnpm build`, and targeted `pnpm exec oxlint` for all changed TS/TSX files passed. Tests cover valid/invalid/escaped evidence refs, revision history and conflicts, immutable originals, all numeric operators/AND filters, rejected/Mock/failed cases, UI save failures and recovery. No external model was called.
+
 ## Stage 1C-01 operator-approved implementation (2026-09-09)
 
 This instruction supersedes earlier Mock-only restrictions for semantics. Implemented on `feat/20260907-next`; local commit only, no push or deployment.
