@@ -178,14 +178,15 @@ class PostgreSQLRepository:
             )
             connection.execute("DELETE FROM feature_results WHERE result_id=%s", (result.id,))
             connection.execute("DELETE FROM evidence_results WHERE result_id=%s", (result.id,))
-            connection.executemany(
-                "INSERT INTO feature_results (result_id, position, data) VALUES (%s, %s, %s)",
-                [(result.id, index, Jsonb(value)) for index, value in enumerate(features)],
-            )
-            connection.executemany(
-                "INSERT INTO evidence_results (result_id, position, data) VALUES (%s, %s, %s)",
-                [(result.id, index, Jsonb(value)) for index, value in enumerate(evidence)],
-            )
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT INTO feature_results (result_id, position, data) VALUES (%s, %s, %s)",
+                    [(result.id, index, Jsonb(value)) for index, value in enumerate(features)],
+                )
+                cursor.executemany(
+                    "INSERT INTO evidence_results (result_id, position, data) VALUES (%s, %s, %s)",
+                    [(result.id, index, Jsonb(value)) for index, value in enumerate(evidence)],
+                )
 
     def _result_from_row(self, row) -> AnalysisResult:
         result_id, data = row
