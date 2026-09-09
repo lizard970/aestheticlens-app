@@ -19,7 +19,7 @@ Each record has a server-assigned result-local revision and original value; the 
 - `GET /api/v1/analysis-results`: stored result history for the history picker.
 - `GET /api/v1/assets/{asset_id}/content`: retained image bytes, used to restore previews.
 
-The UI remembers only the result ID in the URL and refetches server data on refresh. Historical reads do not rerun models or create new analysis jobs. Replaceable Repository methods return deep copies and keep original/feedback stores separate. This slice retains the existing in-memory persistence: refresh/new service facade can recover history while the backend process lives; backend restart loses data. Cross-process durability and multi-process concurrency remain a PostgreSQL persistence task, not a completed production Stage 1D guarantee.
+The UI remembers only the result ID in the URL and refetches server data on refresh. Historical reads do not rerun models or create new analysis jobs. Replaceable Repository methods return deep copies and keep original/feedback stores separate. When `AESTHETICLENS_DATABASE_URL` is set, the API uses PostgreSQL and persists assets, jobs/results, feature/evidence rows, and append-only feedback across backend restarts. Without it, tests and lightweight development retain the in-memory repository. Apply `backend/migrations/001_initial.sql` with `python -m app.migrate` before startup.
 
 ## Structured search
 
@@ -38,4 +38,4 @@ The UI remembers only the result ID in the URL and refetches server data on refr
 
 All tags and all numeric filters combine with AND. Operators are eq/gt/gte/lt/lte; equality uses the stored value exactly. Missing, failed, nonnumeric and Boolean feature values do not match; thresholds must be finite numbers. Unknown fields/operators are rejected. Empty filters list all confirmed real cases. Response items include asset/result/job IDs, filename, image URL, original tags, revision number and a short preview from current human-reviewed text. No semantic matching, vector indexes, rankings, collections or batches are implemented. Capabilities expose structured_search as available and semantic/hybrid as not_implemented.
 
-Next retrieval step: implement PostgreSQL-backed Repository/KnowledgeRepository, persist original results, append-only feedback and confirmed case projection, and preserve these AND numeric/tag contract tests. Add restart-recovery tests before semantic/vector retrieval is introduced.
+Next retrieval step: add operator-approved semantic/vector retrieval only after its data contract, embedding lifecycle, and evaluation gates are defined.

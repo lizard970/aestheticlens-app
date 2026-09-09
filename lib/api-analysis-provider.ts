@@ -1,4 +1,4 @@
-import type { AnalysisProvider, AnalysisResult, DimensionFeedback, FeatureResult, HumanRevision, ResolvedEvidence, UploadedAsset } from './aesthetic-domain';
+import type { AnalysisProvider, AnalysisResult, DimensionFeedback, FeatureResult, FeedbackEntry, HumanRevision, ResolvedEvidence, UploadedAsset } from './aesthetic-domain';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_AESTHETICLENS_API_URL ?? 'http://localhost:8000/api/v1';
 
@@ -13,6 +13,7 @@ interface ApiResult {
   completion_status?: 'complete' | 'partial';
   evidence?: ResolvedEvidence[];
   human_revision?: HumanRevision;
+  feedback_history?: FeedbackEntry[];
   preview_url?: string;
 }
 
@@ -60,6 +61,7 @@ export class ApiAnalysisProvider implements AnalysisProvider {
       provenance: { mode: result.provenance.mode ?? 'mock', profileVersion: result.provenance.profile_version ?? 'unknown', pipelineVersion: result.provenance.pipeline_version ?? 'unknown', semantic: result.provenance.semantic },
       features: result.features ?? [], warnings: result.warnings ?? [], completionStatus: result.completion_status ?? 'complete',
       resolvedEvidence: result.evidence ?? [], humanRevision: result.human_revision,
+      feedbackHistory: result.feedback_history ?? [],
       previewUrl: result.preview_url ? new URL(result.preview_url, API_BASE_URL).href : undefined,
     };
   }

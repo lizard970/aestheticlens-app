@@ -75,6 +75,7 @@ def test_edit_history_recovery_and_raw_output_immutability(stored):
     history = client.get(f"/api/v1/analysis-results/{result.id}/feedback").json()
     assert history["original_result"] == raw
     assert len(history["feedback"]) == 2
+    assert [item["revision"] for item in history["feedback"]] == [2, 1]
     assert history["latest_revision"]["dimensions"][0]["review_status"] == "reject"
     previous = client.get(f"/api/v1/analysis-results/{result.id}?revision=1").json()
     assert previous["human_revision"]["dimensions"][0]["observation"] == "Human observation"
@@ -89,6 +90,31 @@ def test_edit_history_recovery_and_raw_output_immutability(stored):
     assert repository.results[result.job_id].model_dump(mode="json") == raw
     assert client.get("/api/v1/analysis-results").json()["items"][0]["id"] == str(result.id)
     assert client.get(restored.preview_url).content == b"fixture"
+
+
+@pytest.mark.parametrize("kind", ["accept", "edit", "reject"])
+@pytest.mark.parametrize("comment", ["review comment", None])
+def test_every_review_action_persists_explicit_optional_comment(stored, kind, comment):
+    repository, result, client = stored
+    extra = {"corrected_value": {"observation": "Human", "interpretation": "Edited"}} if kind == "edit" else {}
+    response = save(client, result, "color", kind, comment=comment, **extra)
+    assert response.status_code == 201
+    assert response.json()["comment"] == comment
+    assert repository.read_feedback(result.id)[0].comment == comment
+    history = client.get(f"/api/v1/analysis-results/{result.id}/feedback").json()["feedback"]
+    assert history[0]["comment"] == comment
+
+
+def test_dimension_targets_remain_separate_in_history(stored):
+    _, result, client = stored
+    for dimension in result.dimensions:
+        assert save(client, result, dimension.code, comment=f"note-{dimension.code}").status_code == 201
+    payload = client.get(f"/api/v1/analysis-results/{result.id}").json()
+    assert len(payload["feedback_history"]) == 5
+    for dimension in result.dimensions:
+        prefix = f"/dimensions/{dimension.code}"
+        targeted = [item for item in payload["feedback_history"] if item["target_path"] == prefix or item["target_path"].startswith(prefix + "/")]
+        assert len(targeted) == 1
 
 
 def test_field_edits_compose_and_conflicts_do_not_append(stored):

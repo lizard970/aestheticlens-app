@@ -152,6 +152,7 @@ class AnalysisResultView(AnalysisResult):
     human_revision: HumanRevision
     asset_id: UUID
     preview_url: str
+    feedback_history: list[Feedback] = Field(default_factory=list)
 
 
 class NumericFilter(BaseModel):

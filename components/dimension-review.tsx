@@ -44,6 +44,12 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
     result.resolvedEvidence?.filter((item) =>
       item.supports_dimensions.includes(dimension.code),
     ) ?? [];
+  const targetPrefix = `/dimensions/${dimension.code}`;
+  const history = (result.feedbackHistory ?? []).filter(
+    (item) =>
+      item.target_path === targetPrefix ||
+      item.target_path?.startsWith(`${targetPrefix}/`),
+  );
 
   async function submit(type: DimensionFeedback['feedback_type']) {
     setPending(true);
@@ -55,8 +61,8 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
         ...(type === 'edit'
           ? { corrected_value: { observation, interpretation } }
           : {}),
-        comment: note || undefined,
-        error_category: category || undefined,
+        comment: note.trim() || null,
+        error_category: category.trim() || null,
         base_revision: result.humanRevision?.revision ?? 0,
       });
       onSaved(updated);
@@ -93,8 +99,26 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
       </details>
       <p className="text-sm">
         人工审核：{statusLabels[current?.review_status ?? 'unreviewed']} · 修订{' '}
-        {result.humanRevision?.revision ?? 0}
+        {history.length}
       </p>
+      <details className="rounded-lg border border-white/10 p-3">
+        <summary className="cursor-pointer text-sm">
+          审核历史 / Review history（{history.length}）
+        </summary>
+        {history.length === 0 && (
+          <p className="mt-2 text-sm text-muted-foreground">暂无该维度的审核记录。</p>
+        )}
+        {history.map((entry) => (
+          <article key={entry.id} className="mt-3 border-t border-white/10 pt-3 text-sm">
+            <p>{entry.feedback_type} · {entry.created_at} · rev {entry.revision}</p>
+            <p>目标：{entry.target_path}</p>
+            <p>原值：{JSON.stringify(entry.original_value)}</p>
+            <p>修正值：{entry.corrected_value === null ? '—' : JSON.stringify(entry.corrected_value)}</p>
+            <p>错误类别：{entry.error_category || '—'}</p>
+            {entry.comment && <p>备注：{entry.comment}</p>}
+          </article>
+        ))}
+      </details>
       {current?.feedback_id && (
         <div className="rounded-lg border border-cyan-300/20 p-3 text-sm">
           <p>最新人工版本 · 观察：{current.observation}</p>
