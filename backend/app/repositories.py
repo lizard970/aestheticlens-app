@@ -11,9 +11,18 @@ from .evidence import resolve_evidence
 from .models import AnalysisJob, AnalysisResult, Asset, Feedback, StoredCaseEmbedding
 from .collection_storage import MemoryCollectionStorage, PostgreSQLCollectionStorage
 from .collection_models import AssetCollection, CollectionItem
+from .evaluation import EvaluationCase, EvaluationRun, EvaluationFeedback
+from .evaluation_storage import MemoryEvaluationStorage, PostgreSQLEvaluationStorage
 
 
 class Repository(Protocol):
+    def save_evaluation_case(self, case: EvaluationCase) -> None: ...
+    def get_evaluation_case(self, case_id: UUID) -> EvaluationCase | None: ...
+    def list_evaluation_cases(self) -> list[EvaluationCase]: ...
+    def save_evaluation_run(self, run: EvaluationRun) -> None: ...
+    def get_evaluation_run(self, run_id: UUID) -> EvaluationRun | None: ...
+    def save_evaluation_feedback(self, feedback: EvaluationFeedback) -> None: ...
+    def list_evaluation_feedback(self, run_id: UUID) -> list[EvaluationFeedback]: ...
     def collection_lock(self, collection_id: UUID): ...
     def save_collection(self, collection: AssetCollection) -> None: ...
     def get_collection(self, collection_id: UUID) -> AssetCollection | None: ...
@@ -37,7 +46,7 @@ class Repository(Protocol):
                                result_ids: list[UUID] | None = None) -> list[tuple[StoredCaseEmbedding, float]]: ...
 
 
-class InMemoryRepository(MemoryCollectionStorage):
+class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
     def __init__(self) -> None:
         self.assets: dict[UUID, Asset] = {}
         self.jobs: dict[UUID, AnalysisJob] = {}
@@ -48,6 +57,8 @@ class InMemoryRepository(MemoryCollectionStorage):
         self._review_lock = RLock()
         self.collections: dict[UUID, AssetCollection] = {}
         self.collection_items: dict[UUID, CollectionItem] = {}
+        self.evaluation_records = {name: {} for name in
+                                   ("evaluation_cases", "evaluation_runs", "evaluation_feedback")}
 
     def save_asset(self, asset: Asset, content: bytes) -> None:
         self.assets[asset.id] = asset.model_copy(deep=True)
@@ -125,7 +136,7 @@ def _json_data(model) -> dict:
     return json.loads(model.model_dump_json())
 
 
-class PostgreSQLRepository(PostgreSQLCollectionStorage):
+class PostgreSQLRepository(PostgreSQLCollectionStorage, PostgreSQLEvaluationStorage):
     """PostgreSQL storage adapter; domain/review/search rules stay in services."""
 
     def __init__(self, database_url: str) -> None:
