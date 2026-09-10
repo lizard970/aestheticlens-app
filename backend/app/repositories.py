@@ -16,6 +16,7 @@ from .evaluation_storage import MemoryEvaluationStorage, PostgreSQLEvaluationSto
 
 
 class Repository(Protocol):
+    def delete_knowledge_case(self, result_id: UUID) -> None: ...
     def save_evaluation_case(self, case: EvaluationCase) -> None: ...
     def get_evaluation_case(self, case_id: UUID) -> EvaluationCase | None: ...
     def list_evaluation_cases(self) -> list[EvaluationCase]: ...
@@ -92,6 +93,23 @@ class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
 
     def list_results(self) -> list[AnalysisResult]:
         return [item.model_copy(deep=True) for item in self.results.values()]
+
+    def delete_knowledge_case(self, result_id: UUID) -> None:
+        with self._review_lock:
+            result = self.get_result(result_id)
+            if result is None:
+                raise LookupError("ANALYSIS_RESULT_NOT_FOUND")
+            self.results.pop(result.job_id, None)
+            self.jobs.pop(result.job_id, None)
+            self.feedback.pop(result_id, None)
+            self.case_embeddings.pop(result_id, None)
+            for item in self.collection_items.values():
+                if item.result_id == result_id or item.job_id == result.job_id:
+                    item.result_id = item.job_id = None
+                    item.status, item.progress_percent, item.error_info = "failed", 100, "ANALYSIS_RESULT_DELETED"
+                    collection = self.collections.get(item.collection_id)
+                    if collection:
+                        collection.aggregation, collection.status = {}, "ready"
 
     def read_feedback(self, result_id: UUID) -> list[Feedback]:
         with self._review_lock:
@@ -235,6 +253,31 @@ class PostgreSQLRepository(PostgreSQLCollectionStorage, PostgreSQLEvaluationStor
         with self._connect() as connection:
             rows = connection.execute("SELECT id, data FROM analysis_results ORDER BY created_at, id").fetchall()
         return [self._result_from_row(row) for row in rows]
+
+    def delete_knowledge_case(self, result_id: UUID) -> None:
+        """Remove analysis records only. The asset row and image bytes intentionally remain."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT job_id FROM analysis_results WHERE id=%s FOR UPDATE", (result_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError("ANALYSIS_RESULT_NOT_FOUND")
+            job_id = row[0]
+            # Collection JSON references are not foreign keys; invalidate derived snapshots.
+            affected = connection.execute(
+                "UPDATE collection_items SET data = data || "
+                "'{\"result_id\":null,\"job_id\":null,\"status\":\"failed\",\"progress_percent\":100,"
+                "\"error_info\":\"ANALYSIS_RESULT_DELETED\"}'::jsonb "
+                "WHERE data->>'result_id'=%s OR data->>'job_id'=%s RETURNING collection_id",
+                (str(result_id), str(job_id)),
+            ).fetchall()
+            for (collection_id,) in affected:
+                connection.execute("UPDATE asset_collections SET data=data || "
+                                   "'{\"aggregation\":{},\"status\":\"ready\"}'::jsonb WHERE id=%s", (collection_id,))
+            # feedback does not cascade; result children/vector do.
+            connection.execute("DELETE FROM feedback WHERE result_id=%s", (result_id,))
+            connection.execute("DELETE FROM analysis_results WHERE id=%s", (result_id,))
+            connection.execute("DELETE FROM analysis_jobs WHERE id=%s", (job_id,))
 
     def read_feedback(self, result_id: UUID) -> list[Feedback]:
         with self._connect() as connection:

@@ -1,5 +1,26 @@
 # Codex Handoff
 
+## Knowledge case deletion (2026-09-11)
+
+Completed the existing uncommitted deletion API/repository/client foundation with
+confirmation buttons on knowledge cards and detail pages. DELETE
+`/api/v1/knowledge/cases/{result_id}` removes the selected result, its analysis job,
+feedback, features, evidence and embedding. PostgreSQL performs deletion in one
+transaction; other cases remain intact. Collection references are cleared and stale
+aggregations invalidated. The asset storage row and original bytes remain available:
+this application stores image bytes in `assets.content`, so deleting that row would
+also delete original image storage. No filesystem deletion or image-file writes.
+No production records were deleted during implementation.
+
+Successful UI deletion removes the card and updates statistics, or shows a deleted
+state on detail. Failed requests retain the case and allow retry. No database migration.
+Validation: backend `python -m pytest -q` 95 passed, 4 PostgreSQL tests skipped
+(test URL absent); frontend `pnpm test` 26 passed; typecheck, build, changed-file lint
+and diff checks passed. Tests cover retained asset bytes/file, unrelated cases,
+removed dependencies, collection invalidation and confirmation/failure/success UI.
+Real PostgreSQL deletion/restart coverage is added but remains skipped on this host.
+Local commit only, no push; unrelated adapter/config/launcher edits are preserved.
+
 ## Knowledge navigation, pages, retry and local removal (2026-09-10)
 
 Cause: non-analysis menu entries were disabled buttons without hrefs, and only the

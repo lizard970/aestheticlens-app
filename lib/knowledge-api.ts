@@ -67,6 +67,14 @@ export async function loadKnowledge(): Promise<CaseView[]> {
   return cases;
 }
 
+export async function deleteKnowledgeCase(resultId: string) {
+  const response = await fetch(`${API_BASE_URL}/knowledge/cases/${encodeURIComponent(resultId)}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ detail: response.statusText })) as { detail?: string };
+    throw new Error(payload.detail ?? `HTTP_${response.status}`);
+  }
+}
+
 export function caseStatus(result?: AnalysisResult) {
   if (
     !result?.humanRevision ||

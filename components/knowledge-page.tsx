@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- Existing backend serves original image previews. */
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { DeleteKnowledgeCase } from './delete-knowledge-case';
 import { WorkspacePage } from './workspace-navigation';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -240,6 +241,11 @@ export function KnowledgePage() {
               </div>
             </div>
             {detailError && <p role="alert">{detailError}</p>}
+            <DeleteKnowledgeCase id={entry.result_id} name={entry.original_filename} onDeleted={() => {
+              sequence.current++;
+              setLoading(false);
+              setCases(current => current.filter(item => item.entry.result_id !== entry.result_id));
+            }} />
             <KnowledgeEvidence result={result} />
           </article>
         ))}
