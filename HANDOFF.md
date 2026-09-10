@@ -1,5 +1,34 @@
 # Codex Handoff
 
+## Evaluation infrastructure (2026-09-10)
+
+Implemented standalone evaluation cases, immutable run snapshots, and append-only human
+feedback using the existing repository protocol with memory/PostgreSQL implementations.
+Migration `004_evaluation.sql` creates `evaluation_cases`, `evaluation_runs`, and
+`evaluation_feedback`, with foreign keys and JSONB payloads matching the existing pattern.
+Apply through the existing `cd backend; python -m app.migrate` command.
+
+Added `POST /api/v1/evaluation/cases`, `GET /api/v1/evaluation/cases`, and
+`POST /api/v1/evaluation/feedback`. Missing referenced assets/runs return 404;
+invalid decisions or non-integer/negative revision counts return 422.
+Evaluation runs are explicitly recorded by backend callers using
+`EvaluationService(repository).record_run(case_id, model_output)`; no automatic pipeline
+hook or additional run endpoint was added. Outputs must be JSON-compatible snapshots.
+Case listing is deterministic by ID. Feedback remains independent of production reviews.
+
+Utilities in `backend/app/evaluation.py`: `approval_rate`, `modification_rate`,
+`rejection_rate`, `average_revision_count`. Rates are fractions in [0,1], calculated
+per supplied feedback entry, not per distinct run or latest review. Every submitted
+entry counts once; callers select the cohort. Empty inputs return 0.0 for all utilities.
+Revision counts are evaluator-supplied. No automatic scoring, frontend, or analysis
+behavior changes; unrelated user edits preserved. Local-only delivery, no deployment/push.
+
+Validation: `cd backend; python -m pytest -q` — 94 passed, 3 PostgreSQL integration
+tests skipped because `AESTHETICLENS_TEST_DATABASE_URL` is absent. New tests cover API
+contracts, validation, missing references, optional fields, snapshot isolation,
+append-only storage, metrics, production-store isolation and PostgreSQL restart recovery
+(the latter is included but not verified on this host). `git diff --check` passed.
+
 ## Image collection / batch analysis slice (2026-09-10)
 
 Implemented the operator-requested minimal collection API, ordered multipart/ZIP ingestion,

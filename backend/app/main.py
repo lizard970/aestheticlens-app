@@ -17,6 +17,7 @@ from .reviews import ReviewService
 from .knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
 from .answers import AnswerError, AnswerRequest, ChatAnswerAdapter, KnowledgeAnswer, KnowledgeAnswerService
 from .collection_routes import collection_router
+from .evaluation import evaluation_router
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
@@ -28,6 +29,7 @@ semantic_search_service = SemanticSearchService(repository, embedding_adapter) i
 hybrid_search_service = HybridSearchService(repository, embedding_adapter)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
 app.include_router(collection_router(lambda: repository))
+app.include_router(evaluation_router(lambda: repository))
 
 
 @app.post("/api/v1/knowledge/answers", response_model=KnowledgeAnswer)
