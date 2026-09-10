@@ -1,5 +1,26 @@
 # Codex Handoff
 
+## Image collection / batch analysis slice (2026-09-10)
+
+Implemented the operator-requested minimal collection API, ordered multipart/ZIP ingestion,
+per-item persisted progress/errors and partial success, reusing the unchanged single-image
+analysis service. Memory and PostgreSQL storage implement the same collection methods;
+`003_collections.sql` persists collections and ordered items. Aggregation includes successful
+scalar feature statistics, tag frequencies, revision-aware extractive dimension summaries,
+feature clustering, medoid representatives and statistical outliers. Details and limits:
+`docs/collections.md`. Processing is synchronous and explicitly resumable after restart;
+failed items are terminal. No UI, video, RAG, or search changes. Local commit only, no push;
+unrelated user-owned adapter/prompt/vocabulary/launcher edits excluded.
+
+Validation: `python -m pytest -q` — 91 passed, 2 PostgreSQL integration tests skipped
+because `AESTHETICLENS_TEST_DATABASE_URL` is absent. Collection tests cover pipeline reuse,
+partial failure, order/timestamps, ZIP safety, result recovery, aggregation failure exclusion,
+representatives and a detected outlier; real PostgreSQL restart test is included but unverified
+on this host. `pnpm test` — 15 passed; `pnpm typecheck`, `pnpm build`, and
+`git diff --check` passed. `pnpm lint` fails on existing unmodified UI-kit/hook/webmcp findings.
+Next: configure a dedicated PostgreSQL/pgvector test database and run
+`cd backend; python -m pytest -q tests/test_collections.py tests/test_postgresql_repository.py`.
+
 ## Knowledge Answer slice
 
 Added `POST /api/v1/knowledge/answers`, using existing Hybrid Search and Chat Completions configuration. Context uses current accepted interpretations, summary, tags and resolved referenced numeric facts. Similarity cutoff is configurable (default 0.3). Empty/irrelevant retrieval skips the LLM; invalid citations return insufficient evidence. Existing search endpoints and user-owned adapter/prompt/launcher edits are preserved. No migration or UI changes.
