@@ -14,6 +14,8 @@ type Props = {
   dimension: AnalysisDimension;
   save: (id: string, feedback: DimensionFeedback) => Promise<AnalysisResult>;
   onSaved: (result: AnalysisResult) => void;
+  disabled?: boolean;
+  onPendingChange?: (pending: boolean) => void;
 };
 
 const statusLabels = {
@@ -24,7 +26,14 @@ const statusLabels = {
   flag_error: '已标记错误',
 };
 
-export function DimensionReview({ result, dimension, save, onSaved }: Props) {
+export function DimensionReview({
+  result,
+  dimension,
+  save,
+  onSaved,
+  disabled = false,
+  onPendingChange,
+}: Props) {
   const formId = useId();
   const current = result.humanRevision?.dimensions.find(
     (item) => item.code === dimension.code,
@@ -52,7 +61,9 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
   );
 
   async function submit(type: DimensionFeedback['feedback_type']) {
+    if (pending || disabled) return;
     setPending(true);
+    onPendingChange?.(true);
     setError(null);
     try {
       const updated = await save(result.id, {
@@ -67,10 +78,13 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
       });
       onSaved(updated);
       setEditing(false);
+      setNote('');
+      setCategory('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '保存失败，请重试');
     } finally {
       setPending(false);
+      onPendingChange?.(false);
     }
   }
 
@@ -106,14 +120,26 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
           审核历史 / Review history（{history.length}）
         </summary>
         {history.length === 0 && (
-          <p className="mt-2 text-sm text-muted-foreground">暂无该维度的审核记录。</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            暂无该维度的审核记录。
+          </p>
         )}
         {history.map((entry) => (
-          <article key={entry.id} className="mt-3 border-t border-white/10 pt-3 text-sm">
-            <p>{entry.feedback_type} · {entry.created_at} · rev {entry.revision}</p>
+          <article
+            key={entry.id}
+            className="mt-3 border-t border-white/10 pt-3 text-sm"
+          >
+            <p>
+              {entry.feedback_type} · {entry.created_at} · rev {entry.revision}
+            </p>
             <p>目标：{entry.target_path}</p>
             <p>原值：{JSON.stringify(entry.original_value)}</p>
-            <p>修正值：{entry.corrected_value === null ? '—' : JSON.stringify(entry.corrected_value)}</p>
+            <p>
+              修正值：
+              {entry.corrected_value === null
+                ? '—'
+                : JSON.stringify(entry.corrected_value)}
+            </p>
             <p>错误类别：{entry.error_category || '—'}</p>
             {entry.comment && <p>备注：{entry.comment}</p>}
           </article>
@@ -182,15 +208,15 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
         <Button
           variant="outline"
           size="sm"
-          disabled={pending}
+          disabled={pending || disabled || editing}
           onClick={() => void submit('accept')}
         >
-          认可
+          确认
         </Button>
         <Button
           variant="outline"
           size="sm"
-          disabled={pending}
+          disabled={pending || disabled}
           onClick={() => {
             setObservation(current?.observation ?? dimension.observation);
             setInterpretation(
@@ -201,21 +227,28 @@ export function DimensionReview({ result, dimension, save, onSaved }: Props) {
         >
           修改
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() => void submit('reject')}
-        >
-          拒绝
-        </Button>
         {editing && (
           <Button
             size="sm"
-            disabled={pending || !observation.trim() || !interpretation.trim()}
+            disabled={
+              pending ||
+              disabled ||
+              !observation.trim() ||
+              !interpretation.trim()
+            }
             onClick={() => void submit('edit')}
           >
             保存修订
+          </Button>
+        )}
+        {editing && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => setEditing(false)}
+          >
+            取消修改
           </Button>
         )}
       </div>

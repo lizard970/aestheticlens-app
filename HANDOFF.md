@@ -1,5 +1,42 @@
 # Codex Handoff
 
+## Frontend batch human-review workflow (2026-09-10)
+
+Implemented the operator-requested frontend-only workflow. Navigation displays 素材分析,
+视觉知识库, 对比与检索, 审美档案; 视频镜头 and 模型评测 are hidden without deleting
+destinations or backend capabilities. Previously unavailable navigation destinations
+remain unavailable; this slice does not invent new pages.
+
+Single/multiple image selection and drop append ordered image_001-style tasks. Each task
+reuses the existing single-image analysis API. Failures stay pending and can be retried;
+other images continue. The workspace shows thumbnails, current preview, and independent
+dimension review cards selected through dimension tabs. Each card retains AI originals,
+human revisions, evidence and dimension-scoped history. Actions are 确认 and 修改 only;
+legacy rejection history is preserved but there is no reject/delete action.
+
+States: pending before a result, reviewing until all five dimensions have accept/edit
+status, completed after all five. On successful feedback persistence, move to the next
+unreviewed image at the same dimension, wrapping around; then select another unreviewed
+dimension when needed. Skip unavailable/error results. Failed saves never advance.
+Previous/next/thumbnail navigation and dimension selection are persisted. Navigation is
+locked during saves to prevent applying a response to another selected item.
+
+IndexedDB stores the local queue, source files/previews, results and selection. Reload
+re-fetches server revisions; unavailable server records show a cache warning and cannot
+be reviewed until recovered through existing history. Storage errors are visible.
+Persistence is browser-local, not cross-device; clearing site storage removes the queue.
+Unsaved editor drafts are not submitted reviews. Interrupted analysis remains pending
+and requires an explicit retry (no new backend resume API); a request interrupted after
+server completion may be found in history. No automatic rerun on refresh.
+
+Validation: `pnpm test` — 19 passed; `pnpm typecheck`, `pnpm build`, changed-file
+`pnpm exec oxlint`, and `git diff --check` passed. New interaction tests cover navigation,
+single/multi-file order, partial analysis failure, same-dimension advance, failed-save
+selection, previous/next/thumbnail navigation and remount restoration. Persistence adapters
+are mocked in component tests; real browser IndexedDB lifecycle was not browser-automated.
+Existing local dev page responds HTTP 200. No backend/API/database schema changes, no
+unrelated user edits staged, no push or deployment.
+
 ## Evaluation infrastructure (2026-09-10)
 
 Implemented standalone evaluation cases, immutable run snapshots, and append-only human
