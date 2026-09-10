@@ -80,6 +80,50 @@ function queue(): ReviewQueue {
   };
 }
 
+it('retries a semantic failure with an existing partial result and removes only the local item', async () => {
+  const state = queue();
+  state.items[0].result!.provenance.semantic = { status: 'failed' };
+  state.items[0].asset = {
+    id: 'file',
+    file: new File(['x'], 'x.png', { type: 'image/png' }),
+    previewUrl: 'data:image/png;base64,eA==',
+    width: 1,
+    height: 1,
+  };
+  mocks.read.mockResolvedValue(state);
+  mocks.get.mockImplementation(
+    async (id: string) => state.items.find((i) => i.id === id)!.result,
+  );
+  mocks.analyze.mockResolvedValue(result('retry'));
+  render(<AestheticWorkspace />);
+  fireEvent.click(await screen.findByRole('button', { name: '重试当前图片' }));
+  await waitFor(() => expect(mocks.analyze).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: '重试当前图片' }),
+    ).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '删除当前图片' }));
+  fireEvent.click(await screen.findByRole('button', { name: '确认移除' }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: 'image_001 reviewing' }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole('button', { name: 'image_002 reviewing' }),
+  ).toHaveAttribute('aria-current', 'true');
+  await waitFor(() =>
+    expect(mocks.write).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        items: expect.arrayContaining([expect.objectContaining({ id: '2' })]),
+        currentId: '2',
+      }),
+    ),
+  );
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.read.mockResolvedValue(emptyQueue);
@@ -101,7 +145,11 @@ beforeEach(() => {
 it('hides only requested navigation and accepts single/multiple files in order', async () => {
   render(<AestheticWorkspace />);
   const nav = screen.getByRole('navigation', { name: '主要功能' });
-  expect(within(nav).getAllByRole('button')).toHaveLength(4);
+  expect(within(nav).getAllByRole('link')).toHaveLength(4);
+  expect(within(nav).getByRole('link', { name: '视觉知识库' })).toHaveAttribute(
+    'href',
+    '/knowledge',
+  );
   expect(within(nav).queryByText('视频镜头')).not.toBeInTheDocument();
   expect(within(nav).queryByText('模型评测')).not.toBeInTheDocument();
   const input = screen.getByLabelText('上传图片');

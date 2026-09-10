@@ -3,14 +3,16 @@
 /* eslint-disable @next/next/no-img-element -- Local data previews and existing API image URLs are displayed without an image proxy. */
 
 import { useRef, useState } from 'react';
+import { Aperture } from 'lucide-react';
+import { WorkspaceNavigation } from './workspace-navigation';
 import {
-  Aperture,
-  BookOpenText,
-  FlaskConical,
-  Search,
-  Sparkles,
-  Video,
-} from 'lucide-react';
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DimensionReview } from '@/components/dimension-review';
@@ -23,17 +25,8 @@ import {
 } from '@/components/spatial-composition-features';
 import { SemanticStatus } from '@/components/semantic-status';
 import { reviewProvider, useReviewQueue } from '@/components/use-review-queue';
-import { reviewed, reviewStatus } from '@/lib/review-queue';
+import { reviewed, reviewStatus, canRetry } from '@/lib/review-queue';
 
-// Hide navigation only; retain existing destinations and backend capabilities.
-const navItems = [
-  { label: '素材分析', icon: Aperture, active: true },
-  { label: '视频镜头', icon: Video, hidden: true },
-  { label: '视觉知识库', icon: BookOpenText },
-  { label: '对比与检索', icon: Search },
-  { label: '模型评测', icon: FlaskConical, hidden: true },
-  { label: '审美档案', icon: Sparkles },
-];
 const labels = {
   pending: '待分析',
   reviewing: '待审核',
@@ -44,6 +37,7 @@ export function AestheticWorkspace() {
   const input = useRef<HTMLInputElement>(null);
   const flow = useReviewQueue();
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const { queue } = flow;
   const index = queue.items.findIndex((item) => item.id === queue.currentId);
   const item = queue.items[index];
@@ -71,28 +65,7 @@ export function AestheticWorkspace() {
         </div>
       </header>
       <div className="mx-auto grid max-w-[1800px] lg:grid-cols-[180px_minmax(0,1fr)]">
-        <aside className="border-b border-white/10 p-3 lg:border-r">
-          <nav
-            aria-label="主要功能"
-            className="flex gap-1 overflow-auto lg:flex-col"
-          >
-            {navItems
-              .filter((nav) => !nav.hidden)
-              .map((nav) => (
-                <button
-                  key={nav.label}
-                  type="button"
-                  disabled={!nav.active}
-                  aria-current={nav.active ? 'page' : undefined}
-                  className={`flex shrink-0 items-center gap-2 rounded-lg p-3 text-sm ${nav.active ? 'bg-amber-300/10 text-amber-100' : 'text-muted-foreground disabled:cursor-not-allowed'}`}
-                >
-                  <nav.icon className="size-4" />
-                  {nav.label}
-                  {!nav.active && <span className="text-xs">后续</span>}
-                </button>
-              ))}
-          </nav>
-        </aside>
+        <WorkspaceNavigation active="/" />
         <section className="min-w-0 p-4 lg:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -110,16 +83,53 @@ export function AestheticWorkspace() {
                 上传图片
               </Button>
               <Button
-                disabled={
-                  disabled ||
-                  !queue.items.some((row) => row.asset && !row.result)
-                }
+                disabled={disabled || !queue.items.some(canRetry)}
                 onClick={() => void flow.analyze()}
               >
                 {flow.busy ? '处理中…' : '分析待处理图片'}
               </Button>
             </div>
           </div>
+          {item && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {canRetry(item) && (
+                <Button
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => void flow.analyze(item.id)}
+                >
+                  重试当前图片
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                disabled={disabled}
+                onClick={() => setRemoving(true)}
+              >
+                删除当前图片
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                删除仅移出本地队列；重试会创建新分析，原结果和审核记录保留。
+              </span>
+            </div>
+          )}
+          <AlertDialog open={removing} onOpenChange={setRemoving}>
+            <AlertDialogContent>
+              <AlertDialogTitle>移除当前图片？</AlertDialogTitle>
+              <AlertDialogDescription>
+                本地队列中的图片和未保存修改将移除。服务器原图、分析和审核记录不会删除。
+              </AlertDialogDescription>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  flow.removeCurrent();
+                  setRemoving(false);
+                }}
+              >
+                确认移除
+              </AlertDialogAction>
+            </AlertDialogContent>
+          </AlertDialog>
           <input
             ref={input}
             aria-label="上传图片"
