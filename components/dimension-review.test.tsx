@@ -83,26 +83,54 @@ it('renders newest-first history and counts only the current dimension', () => {
     humanRevision: { ...result.humanRevision!, revision: 5 },
     feedbackHistory: [
       {
-        id: 'lighting-new', result_id: 'result-id', revision: 5,
-        feedback_type: 'reject' as const, created_at: '2026-09-09T02:00:00Z',
-        target_path: '/dimensions/lighting', original_value: {}, corrected_value: null,
-        error_category: null, comment: 'other dimension', base_revision: 4,
+        id: 'lighting-new',
+        result_id: 'result-id',
+        revision: 5,
+        feedback_type: 'reject' as const,
+        created_at: '2026-09-09T02:00:00Z',
+        target_path: '/dimensions/lighting',
+        original_value: {},
+        corrected_value: null,
+        error_category: null,
+        comment: 'other dimension',
+        base_revision: 4,
       },
       {
-        id: 'color-new', result_id: 'result-id', revision: 4,
-        feedback_type: 'edit' as const, created_at: '2026-09-09T01:00:00Z',
-        target_path: '/dimensions/color', original_value: 'old', corrected_value: 'new',
-        error_category: 'wording', comment: 'keep this note', base_revision: 3,
+        id: 'color-new',
+        result_id: 'result-id',
+        revision: 4,
+        feedback_type: 'edit' as const,
+        created_at: '2026-09-09T01:00:00Z',
+        target_path: '/dimensions/color',
+        original_value: 'old',
+        corrected_value: 'new',
+        error_category: 'wording',
+        comment: 'keep this note',
+        base_revision: 3,
       },
       {
-        id: 'color-old', result_id: 'result-id', revision: 1,
-        feedback_type: 'accept' as const, created_at: '2026-09-09T00:00:00Z',
-        target_path: '/dimensions/color/observation', original_value: 'old', corrected_value: null,
-        error_category: null, comment: null, base_revision: 0,
+        id: 'color-old',
+        result_id: 'result-id',
+        revision: 1,
+        feedback_type: 'accept' as const,
+        created_at: '2026-09-09T00:00:00Z',
+        target_path: '/dimensions/color/observation',
+        original_value: 'old',
+        corrected_value: null,
+        error_category: null,
+        comment: null,
+        base_revision: 0,
       },
     ],
   };
-  render(<DimensionReview result={reviewed} dimension={dimension} save={vi.fn()} onSaved={vi.fn()} />);
+  render(
+    <DimensionReview
+      result={reviewed}
+      dimension={dimension}
+      save={vi.fn()}
+      onSaved={vi.fn()}
+    />,
+  );
   expect(screen.getByText(/人工审核：未确认 · 修订 2/)).toBeInTheDocument();
   expect(screen.getByText(/Review history（2）/)).toBeInTheDocument();
   expect(screen.getByText('备注：keep this note')).toBeInTheDocument();
@@ -129,7 +157,10 @@ it('does not claim success on failed save and shows invalid refs explicitly', as
     />,
   );
   expect(screen.getByText(/引用无效，无法解析/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '拒绝' }));
+  expect(
+    screen.queryByRole('button', { name: '拒绝' }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '确认' }));
   await waitFor(() =>
     expect(screen.getByRole('alert')).toHaveTextContent('REVISION_CONFLICT'),
   );
@@ -139,19 +170,21 @@ it('does not claim success on failed save and shows invalid refs explicitly', as
 it('restores human revision from server independently of the original text', () => {
   const restored = {
     ...result,
-    feedbackHistory: [1, 2, 3].map((revision) => ({
-      id: `feedback-${revision}`,
-      result_id: 'result-id',
-      revision,
-      feedback_type: 'edit' as const,
-      created_at: `2026-09-09T0${revision}:00:00Z`,
-      target_path: '/dimensions/color',
-      original_value: {},
-      corrected_value: {},
-      error_category: null,
-      comment: null,
-      base_revision: revision - 1,
-    })).reverse(),
+    feedbackHistory: [1, 2, 3]
+      .map((revision) => ({
+        id: `feedback-${revision}`,
+        result_id: 'result-id',
+        revision,
+        feedback_type: 'edit' as const,
+        created_at: `2026-09-09T0${revision}:00:00Z`,
+        target_path: '/dimensions/color',
+        original_value: {},
+        corrected_value: {},
+        error_category: null,
+        comment: null,
+        base_revision: revision - 1,
+      }))
+      .reverse(),
     humanRevision: {
       revision: 3,
       dimensions: [
