@@ -9,9 +9,16 @@ from uuid import UUID
 from .embeddings import EMBEDDING_DIMENSIONS
 from .evidence import resolve_evidence
 from .models import AnalysisJob, AnalysisResult, Asset, Feedback, StoredCaseEmbedding
+from .collection_storage import MemoryCollectionStorage, PostgreSQLCollectionStorage
+from .collection_models import AssetCollection, CollectionItem
 
 
 class Repository(Protocol):
+    def collection_lock(self, collection_id: UUID): ...
+    def save_collection(self, collection: AssetCollection) -> None: ...
+    def get_collection(self, collection_id: UUID) -> AssetCollection | None: ...
+    def save_collection_item(self, item: CollectionItem) -> None: ...
+    def list_collection_items(self, collection_id: UUID) -> list[CollectionItem]: ...
     def save_asset(self, asset: Asset, content: bytes) -> None: ...
     def get_asset(self, asset_id: UUID) -> Asset | None: ...
     def get_asset_bytes(self, asset_id: UUID) -> bytes | None: ...
@@ -30,7 +37,7 @@ class Repository(Protocol):
                                result_ids: list[UUID] | None = None) -> list[tuple[StoredCaseEmbedding, float]]: ...
 
 
-class InMemoryRepository:
+class InMemoryRepository(MemoryCollectionStorage):
     def __init__(self) -> None:
         self.assets: dict[UUID, Asset] = {}
         self.jobs: dict[UUID, AnalysisJob] = {}
@@ -39,6 +46,8 @@ class InMemoryRepository:
         self.asset_bytes: dict[UUID, bytes] = {}
         self.case_embeddings: dict[UUID, StoredCaseEmbedding] = {}
         self._review_lock = RLock()
+        self.collections: dict[UUID, AssetCollection] = {}
+        self.collection_items: dict[UUID, CollectionItem] = {}
 
     def save_asset(self, asset: Asset, content: bytes) -> None:
         self.assets[asset.id] = asset.model_copy(deep=True)
@@ -116,7 +125,7 @@ def _json_data(model) -> dict:
     return json.loads(model.model_dump_json())
 
 
-class PostgreSQLRepository:
+class PostgreSQLRepository(PostgreSQLCollectionStorage):
     """PostgreSQL storage adapter; domain/review/search rules stay in services."""
 
     def __init__(self, database_url: str) -> None:

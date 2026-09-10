@@ -16,6 +16,7 @@ from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
 from .knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
 from .answers import AnswerError, AnswerRequest, ChatAnswerAdapter, KnowledgeAnswer, KnowledgeAnswerService
+from .collection_routes import collection_router
 
 
 app = FastAPI(title="AestheticLens API", version="0.1.0")
@@ -26,6 +27,7 @@ embedding_adapter = configured_embedding_adapter()
 semantic_search_service = SemanticSearchService(repository, embedding_adapter) if embedding_adapter else None
 hybrid_search_service = HybridSearchService(repository, embedding_adapter)
 allowed_media_types = {"image/jpeg", "image/png", "image/webp"}
+app.include_router(collection_router(lambda: repository))
 
 
 @app.post("/api/v1/knowledge/answers", response_model=KnowledgeAnswer)
