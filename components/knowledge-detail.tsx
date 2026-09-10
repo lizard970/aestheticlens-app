@@ -11,6 +11,7 @@ import type { AnalysisResult } from '@/lib/aesthetic-domain';
 import { WorkspacePage } from './workspace-navigation';
 import { KnowledgeEvidence } from './knowledge-page';
 import { Button } from './ui/button';
+import { DeleteKnowledgeCase } from './delete-knowledge-case';
 
 export function KnowledgeDetail({ id }: { id: string }) {
   const [result, setResult] = useState<AnalysisResult>();
@@ -20,6 +21,7 @@ export function KnowledgeDetail({ id }: { id: string }) {
   }>();
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [deleted, setDeleted] = useState(false);
   useEffect(() => {
     let active = true;
     void new ApiAnalysisProvider()
@@ -61,9 +63,11 @@ export function KnowledgeDetail({ id }: { id: string }) {
           </Button>
         </p>
       )}
-      {!result && !error && <output>正在读取案例…</output>}
-      {result && (
+      {deleted && <p>案例数据库记录已删除，原始图片保留。</p>}
+      {!deleted && !result && !error && <output>正在读取案例…</output>}
+      {!deleted && result && (
         <>
+          <DeleteKnowledgeCase id={id} name={meta?.original_filename ?? id} onDeleted={() => setDeleted(true)} />
           <Link
             href={`/?result_id=${encodeURIComponent(id)}`}
             className="underline"

@@ -141,6 +141,15 @@ def list_result_history():
     return {"items": items}
 
 
+@app.delete("/api/v1/knowledge/cases/{result_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_knowledge_case(result_id: UUID):
+    """Delete knowledge/analysis records; retain the original asset bytes."""
+    try:
+        repository.delete_knowledge_case(result_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/assets/{asset_id}/content")
 def read_asset_content(asset_id: UUID):
     asset = repository.get_asset(asset_id)
