@@ -1,5 +1,43 @@
 # Codex Handoff
 
+## Knowledge navigation, pages, retry and local removal (2026-09-10)
+
+Cause: non-analysis menu entries were disabled buttons without hrefs, and only the
+root page existed. This is Next/Vinext file routing, not React Router. Added shared
+navigation links and pages `/knowledge`, `/knowledge/[id]`, `/search`, `/profile`
+(Coming Soon), retaining existing visual styling. No backend or database changes.
+
+Knowledge loads eligible confirmed real cases via existing structured search, then
+loads revision-aware result details in bounded batches. It shows counts, tags,
+AI and human five-dimension text, history/comments, filtering and case details.
+No independent human-tag list exists in this API: the UI explicitly distinguishes
+case-associated AI tags from human-confirmed tags, leaves confirmed-tag count unknown,
+and never invents tag differences or source type. Last update uses available feedback
+timestamps, not guessed timestamps. Missing review fields and load failures are explicit.
+Search connects structured, semantic and hybrid APIs, with tags/numeric conditions,
+provider errors, result links and a minimal two-case summary comparison.
+
+Model failures can return partial results; retry previously excluded any existing
+result. Retry now includes semantic failure, can target the current image, and reuses
+the single-image API. For historical entries, original bytes come from the existing
+content endpoint. Retries create new results; original results/reviews stay immutable.
+Confirmed removal only deletes the current local queue entry/file; server assets and
+feedback remain recoverable through history. Selection and deletion persist in IndexedDB.
+Deep links now select an already-queued result correctly and clear the consumed URL
+parameter so it cannot override later restored navigation.
+
+Existing interfaces used: POST assets / analysis-jobs; GET job result; GET
+analysis-results / analysis-results/{id} / assets/{id}/content; POST
+search/structured, search/semantic, search/hybrid. No new backend endpoints.
+
+Validation: `pnpm test` — 25 passed; `pnpm typecheck`, `pnpm build`, changed-file lint,
+and `git diff --check` passed. Tests cover navigation hrefs, partial-model retry,
+local removal, knowledge fields/filters/no-fabricated-review, API payload/error
+handling and hybrid conditions. Local HTTP checks: knowledge, search, profile and
+dynamic detail all return 200. No live model invocation or browser interaction QA.
+User-owned backend/config/launcher/evaluation_dataset work remains untouched.
+Local commit only; no push/deployment.
+
 ## Frontend batch human-review workflow (2026-09-10)
 
 Implemented the operator-requested frontend-only workflow. Navigation displays 素材分析,

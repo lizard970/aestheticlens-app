@@ -1,6 +1,6 @@
 import type { AnalysisProvider, AnalysisResult, DimensionFeedback, FeatureResult, FeedbackEntry, HumanRevision, ResolvedEvidence, UploadedAsset } from './aesthetic-domain';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_AESTHETICLENS_API_URL ?? 'http://localhost:8000/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_AESTHETICLENS_API_URL ?? 'http://localhost:8000/api/v1';
 
 interface ApiResult {
   id: string;
@@ -17,7 +17,7 @@ interface ApiResult {
   preview_url?: string;
 }
 
-async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText })) as { detail?: string };

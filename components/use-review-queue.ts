@@ -5,6 +5,7 @@ import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
 import type { AnalysisResult, UploadedAsset } from '@/lib/aesthetic-domain';
 import {
   emptyQueue,
+  canRetry,
   nextReview,
   readQueue,
   writeQueue,
@@ -104,8 +105,17 @@ export function useReviewQueue() {
         }
       }
       if (cancelled) return;
-      state.current = { ...restored, items };
-      setQueue(state.current);
+      const linked = items.find((item) => item.result?.id === id);
+      update(() => ({
+        ...restored,
+        items,
+        currentId: linked?.id ?? restored.currentId,
+      }));
+      if (linked) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('result_id');
+        window.history.replaceState(null, '', url);
+      }
       setReady(true);
     })();
     return () => {
@@ -127,7 +137,7 @@ export function useReviewQueue() {
           added.push({
             id: asset.id,
             asset,
-            name: `image_${String(state.current.items.length + added.length + 1).padStart(3, '0')}`,
+            name: `image_${String(Math.max(0, ...state.current.items.map((item) => Number(item.name.replace('image_', '')) || 0)) + added.length + 1).padStart(3, '0')}`,
           });
         } catch (reason) {
           setError(
@@ -147,14 +157,14 @@ export function useReviewQueue() {
     }
   }
 
-  async function analyze() {
+  async function analyze(onlyId?: string) {
     if (lock.current || !ready) return;
     lock.current = true;
     setBusy(true);
     setError(null);
     try {
       for (const item of state.current.items.filter(
-        (item) => item.asset && !item.result,
+        (item) => canRetry(item) && (!onlyId || item.id === onlyId),
       )) {
         if (!alive.current) break;
         update((current) => ({
@@ -164,7 +174,17 @@ export function useReviewQueue() {
           ),
         }));
         try {
-          const result = await reviewProvider.analyze(item.asset!);
+          let asset = item.asset;
+          if (!asset && item.result?.previewUrl) {
+            const response = await fetch(item.result.previewUrl);
+            if (!response.ok) throw new Error('原图读取失败');
+            const blob = await response.blob();
+            asset = await createAsset(
+              new File([blob], item.name, { type: blob.type }),
+            );
+          }
+          if (!asset) throw new Error('原图不可用');
+          const result = await reviewProvider.analyze(asset);
           update((current) => ({
             ...current,
             items: current.items.map((row) =>
@@ -244,6 +264,25 @@ export function useReviewQueue() {
     analyze,
     openHistory,
     saved,
+    removeCurrent: () => {
+      if (lock.current) return;
+      update((current) => {
+        const index = current.items.findIndex(
+          (item) => item.id === current.currentId,
+        );
+        const items = current.items.filter(
+          (item) => item.id !== current.currentId,
+        );
+        const url = new URL(window.location.href);
+        url.searchParams.delete('result_id');
+        window.history.replaceState(null, '', url);
+        return {
+          ...current,
+          items,
+          currentId: items[Math.min(index, items.length - 1)]?.id ?? null,
+        };
+      });
+    },
     select: (id: string) =>
       update((current) => ({ ...current, currentId: id })),
     dimension: (code: string) =>

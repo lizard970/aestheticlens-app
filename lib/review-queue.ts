@@ -18,6 +18,10 @@ export const emptyQueue: ReviewQueue = {
   dimension: 'lighting',
 };
 
+export function canRetry(item: ReviewItem) {
+  return !item.result || item.result.provenance.semantic?.status === 'failed';
+}
+
 export function reviewed(result: AnalysisResult | undefined, code: string) {
   const status = result?.humanRevision?.dimensions.find(
     (d) => d.code === code,
