@@ -1,4 +1,10 @@
-export type AnalysisStage = 'idle' | 'ready' | 'extracting' | 'analyzing' | 'building' | 'complete';
+export type AnalysisStage =
+  | 'idle'
+  | 'ready'
+  | 'extracting'
+  | 'analyzing'
+  | 'building'
+  | 'complete';
 
 export interface FeatureResult {
   extractor_code: string;
@@ -34,6 +40,11 @@ export interface AnalysisDimension {
 
 export interface AnalysisResult {
   id: string;
+  assetId?: string;
+  jobId?: string;
+  feature_analysis_status?: PhaseStatus;
+  semantic_analysis_status?: PhaseStatus;
+  semantic_error_message?: string | null;
   summary: string;
   intent: string;
   dimensions: AnalysisDimension[];
@@ -51,6 +62,14 @@ export interface AnalysisResult {
   humanRevision?: HumanRevision;
   feedbackHistory?: FeedbackEntry[];
   previewUrl?: string;
+}
+
+export type PhaseStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export interface AnalysisProgress {
+  assetId: string;
+  jobId: string;
+  feature_analysis_status: PhaseStatus;
+  semantic_analysis_status: PhaseStatus;
 }
 
 export interface FeedbackEntry {
@@ -78,7 +97,10 @@ export interface ResolvedEvidence {
 export interface HumanRevision {
   revision: number;
   dimensions: Array<{
-    code: string; label: string; observation: string; interpretation: string;
+    code: string;
+    label: string;
+    observation: string;
+    interpretation: string;
     review_status: 'unreviewed' | 'accept' | 'edit' | 'reject' | 'flag_error';
     feedback_id: string | null;
   }>;

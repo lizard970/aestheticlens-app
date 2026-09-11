@@ -33,6 +33,7 @@ class Repository(Protocol):
     def get_asset(self, asset_id: UUID) -> Asset | None: ...
     def get_asset_bytes(self, asset_id: UUID) -> bytes | None: ...
     def save_job(self, job: AnalysisJob) -> None: ...
+    def claim_job(self, job: AnalysisJob) -> bool: ...
     def get_job(self, job_id: UUID) -> AnalysisJob | None: ...
     def save_result(self, result: AnalysisResult) -> None: ...
     def get_result(self, result_id: UUID) -> AnalysisResult | None: ...
@@ -75,6 +76,13 @@ class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
 
     def save_job(self, job: AnalysisJob) -> None:
         self.jobs[job.id] = job.model_copy(deep=True)
+
+    def claim_job(self, job: AnalysisJob) -> bool:
+        with self._review_lock:
+            if job.id in self.jobs:
+                return False
+            self.save_job(job)
+            return True
 
     def get_job(self, job_id: UUID) -> AnalysisJob | None:
         job = self.jobs.get(job_id)
@@ -168,6 +176,15 @@ class PostgreSQLRepository(PostgreSQLCollectionStorage, PostgreSQLEvaluationStor
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("Install backend requirements to use PostgreSQL") from exc
         return psycopg.connect(self.database_url)
+
+    def claim_job(self, job: AnalysisJob) -> bool:
+        from psycopg.types.json import Jsonb
+        with self._connect() as connection:
+            return connection.execute(
+                "INSERT INTO analysis_jobs (id, asset_id, created_at, data) VALUES (%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO NOTHING RETURNING id",
+                (job.id, job.target.id, job.created_at, Jsonb(_json_data(job))),
+            ).fetchone() is not None
 
     def migrate(self) -> None:
         migrations = Path(__file__).parents[1] / "migrations"
