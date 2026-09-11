@@ -246,7 +246,7 @@ export function AestheticWorkspace() {
             </aside>
             <section
               aria-label="当前图片预览"
-              className="rounded-xl border border-white/10 bg-card p-3"
+              className="rounded-xl border border-white/10 bg-card p-3 xl:sticky xl:top-4"
             >
               <h2 className="mb-3 break-all text-sm">
                 {item?.asset?.file.name ?? item?.name ?? '选择图片'}
