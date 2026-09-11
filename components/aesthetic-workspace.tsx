@@ -307,7 +307,7 @@ export function AestheticWorkspace() {
                   <p className="my-2 text-sm">{result.summary}</p>
                   <SemanticStatus result={result} />
                   <p className="my-3 text-sm text-muted-foreground">
-                    保存成功后，自动进入下一张同维度待审核图片。
+                    保存成功后，自动切换当前图片的下一未审核维度；五维完成后进入下一张。
                   </p>
                   <Tabs
                     value={dimensionCode}

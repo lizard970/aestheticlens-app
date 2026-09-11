@@ -277,7 +277,7 @@ it('hides only requested navigation and accepts single/multiple files in order',
   ).toBeInTheDocument();
 });
 
-it('advances same dimension only after saved feedback and restores position on remount', async () => {
+it('advances across all dimensions before moving to the next image and restores position', async () => {
   let persisted = queue();
   mocks.read.mockImplementation(async () => persisted);
   mocks.write.mockImplementation(async (value: ReviewQueue) => {
@@ -297,9 +297,10 @@ it('advances same dimension only after saved feedback and restores position on r
   );
   fireEvent.click(screen.getByRole('button', { name: '确认' }));
   await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'image_002 review_pending' }),
-    ).toHaveAttribute('aria-current', 'true'),
+    expect(screen.getByRole('tab', { name: '空间' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    ),
   );
   expect(mocks.save).toHaveBeenCalledWith(
     '1',
@@ -308,7 +309,10 @@ it('advances same dimension only after saved feedback and restores position on r
       target_path: '/dimensions/color',
     }),
   );
-  await waitFor(() => expect(persisted.currentId).toBe('2'));
+  await waitFor(() => {
+    expect(persisted.currentId).toBe('1');
+    expect(persisted.dimension).toBe('space');
+  });
   first.unmount();
   mocks.get.mockImplementation(
     async (id: string) =>
@@ -317,10 +321,10 @@ it('advances same dimension only after saved feedback and restores position on r
   render(<AestheticWorkspace />);
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'image_002 review_pending' }),
+      screen.getByRole('button', { name: 'image_001 reviewing' }),
     ).toHaveAttribute('aria-current', 'true'),
   );
-  expect(screen.getByRole('tab', { name: '色彩' })).toHaveAttribute(
+  expect(screen.getByRole('tab', { name: '空间' })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -358,7 +362,18 @@ it('restores completed state and skips completed, pending and failed candidates'
   await screen.findByRole('button', { name: 'image_001 completed' });
   expect(reviewStatus(state.items[0])).toBe('completed');
   state.items[1].error = 'offline';
-  expect(nextReview(state)).toEqual({ currentId: '3', dimension: 'color' });
+  expect(nextReview(state)).toEqual({ currentId: '3', dimension: 'lighting' });
   state.items[2].result = undefined;
   expect(nextReview(state)).toEqual({ currentId: '1', dimension: 'color' });
+});
+
+it('keeps the current image until all five dimensions are reviewed', () => {
+  const state = queue();
+  state.items[0].result!.humanRevision!.dimensions[1].review_status = 'accept';
+  expect(nextReview(state)).toEqual({ currentId: '1', dimension: 'space' });
+
+  for (const dimension of state.items[0].result!.humanRevision!.dimensions) {
+    dimension.review_status = 'accept';
+  }
+  expect(nextReview(state)).toEqual({ currentId: '2', dimension: 'lighting' });
 });

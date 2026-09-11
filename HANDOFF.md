@@ -1,5 +1,19 @@
 # Codex Handoff
 
+## Five-dimension review advancement fix (2026-09-12)
+
+Fixed review navigation so a saved dimension stays on the current image and
+automatically selects its next unreviewed dimension in card order. The queue advances
+to the next reviewable image only after all five dimensions on the current image are
+approved or modified, starting that image at its first unreviewed dimension. Manual
+image and dimension navigation remains available and persisted.
+
+Validation: `pnpm test` — 31 passed; `pnpm typecheck`, `pnpm build`, targeted
+oxlint and `git diff --check` passed. Tests cover the one-dimension transition,
+reload persistence and the five-complete boundary before changing images. Existing
+uncommitted palette/provider/config/launcher/dataset files remain excluded. `.env`
+is ignored and untracked; no credential file is included in the commit.
+
 ## Independent analysis phases and concurrent review (2026-09-12)
 
 Implemented the current operator scope without changing feature/semantic algorithms,
