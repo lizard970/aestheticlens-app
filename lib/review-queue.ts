@@ -105,30 +105,28 @@ export function nextReview(
   queue: ReviewQueue,
 ): Pick<ReviewQueue, 'currentId' | 'dimension'> {
   const index = queue.items.findIndex((item) => item.id === queue.currentId);
+  const current = queue.items[index];
+  if (current && canReview(current) && current.result) {
+    const dimensions = current.result.dimensions;
+    const dimensionIndex = dimensions.findIndex(
+      (dimension) => dimension.code === queue.dimension,
+    );
+    const orderedDimensions = [
+      ...dimensions.slice(dimensionIndex + 1),
+      ...dimensions.slice(0, dimensionIndex + 1),
+    ];
+    const pendingDimension = orderedDimensions.find(
+      (dimension) => !reviewed(current.result, dimension.code),
+    );
+    if (pendingDimension) {
+      return { currentId: current.id, dimension: pendingDimension.code };
+    }
+  }
+
   const ordered = [
     ...queue.items.slice(index + 1),
     ...queue.items.slice(0, index + 1),
   ];
-  const current = queue.items[index];
-  if (current && reviewStatus(current) === 'completed') {
-    const pending = ordered.find(
-      (item) => reviewStatus(item) === 'review_pending',
-    );
-    if (pending)
-      return {
-        currentId: pending.id,
-        dimension:
-          pending.result!.dimensions.find((d) => d.code === queue.dimension)
-            ?.code ?? pending.result!.dimensions[0].code,
-      };
-  }
-  const same = ordered.find(
-    (item) =>
-      canReview(item) &&
-      item.result?.dimensions.some((d) => d.code === queue.dimension) &&
-      !reviewed(item.result, queue.dimension),
-  );
-  if (same) return { currentId: same.id, dimension: queue.dimension };
   for (const item of ordered) {
     if (!canReview(item)) continue;
     const dimension = item.result?.dimensions.find(
