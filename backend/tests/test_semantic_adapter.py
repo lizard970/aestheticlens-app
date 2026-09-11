@@ -12,7 +12,14 @@ import app.main as main
 from app.config import load_analysis_profiles, load_feature_config
 from app.feature_pipeline import normalize_image
 from app.models import FeatureResult
-from app.semantic_adapter import ChatCompletionsAdapter, SemanticFailure, SemanticSettings
+from app.semantic_adapter import (
+    ChatCompletionsAdapter,
+    SemanticFailure,
+    SemanticSettings,
+    feature_evidence,
+    semantic_feature_evidence,
+    semantic_numeric_payload,
+)
 from app.services import MockAnalysisService
 
 
@@ -64,7 +71,7 @@ def test_success_sends_normalized_image_features_schema_and_keeps_usage():
         assert request.url.path == "/v1/chat/completions"
         content = body["messages"][1]["content"]
         text = json.loads(content[0]["text"])
-        assert text["feature_evidence"] == {REF: 53.585}
+        assert text["feature_evidence"] == {REF: 53.59}
         assert text["schema"]["additionalProperties"] is False
         raw = base64.b64decode(content[1]["image_url"]["url"].split(",", 1)[1])
         decoded = np.asarray(Image.open(BytesIO(raw)))
@@ -73,13 +80,40 @@ def test_success_sends_normalized_image_features_schema_and_keeps_usage():
 
     result = adapter(handler).analyze(image, features + [failed], profile)
     assert len(result.dimensions) == 5
-    assert "53.585" in result.dimensions[0].interpretation
+    assert "53.59" in result.dimensions[0].interpretation
     assert "不确定性" in result.dimensions[-1].interpretation
     assert result.tags == []
     assert result.metadata["usage"]["total_tokens"] == 150
     assert result.metadata["cost"] is None
     assert result.metadata["prompt_version"] == "1.0.0"
     assert "fixture-secret" not in json.dumps(result.metadata)
+
+
+def test_model_numeric_formatting_does_not_mutate_raw_feature_precision():
+    feature = FeatureResult(
+        extractor_code="fixture",
+        extractor_version="1",
+        feature_schema_version="1",
+        method="fixture",
+        status="succeeded",
+        values={
+            "shadow_share": 0.12356,
+            "continuous_metric": 53.585,
+            "sample_count": 17,
+        },
+    )
+    raw = feature_evidence([feature])
+    formatted = semantic_feature_evidence(raw)
+
+    assert raw["feature:fixture#/shadow_share"] == 0.12356
+    assert raw["feature:fixture#/continuous_metric"] == 53.585
+    assert formatted["feature:fixture#/shadow_share"] == 0.124
+    assert formatted["feature:fixture#/continuous_metric"] == 53.59
+    assert formatted["feature:fixture#/sample_count"] == 17
+    assert semantic_numeric_payload({"alpha_coverage": 0.45678, "width": 1920}) == {
+        "alpha_coverage": 0.457,
+        "width": 1920,
+    }
 
 
 @pytest.mark.parametrize("case", ["json", "schema", "reference", "tag", "duplicate_dimension", "inline_number", "inline_reference"])

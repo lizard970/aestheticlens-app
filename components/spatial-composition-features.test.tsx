@@ -55,7 +55,7 @@ describe('spatial and composition real feature panels', () => {
       screen.getByRole('region', { name: '空间真实计算' }),
     ).toBeInTheDocument();
     expect(screen.getByText('空间复杂度')).toBeInTheDocument();
-    expect(screen.getByText('0.625')).toBeInTheDocument();
+    expect(screen.getByText('0.63')).toBeInTheDocument();
     expect(screen.getByText('35.0%')).toBeInTheDocument();
     expect(screen.getByText('检测到纵向清晰度梯度')).toBeInTheDocument();
   });
@@ -68,8 +68,8 @@ describe('spatial and composition real feature panels', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('右上')).toBeInTheDocument();
     expect(screen.getByText('视觉中心偏移')).toBeInTheDocument();
-    expect(screen.getByText('0.250')).toBeInTheDocument();
-    expect(screen.getByText('0.900')).toBeInTheDocument();
+    expect(screen.getByText('0.25')).toBeInTheDocument();
+    expect(screen.getByText('0.90')).toBeInTheDocument();
   });
 
   it('does not silently hide a missing API feature', () => {

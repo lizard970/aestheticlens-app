@@ -8,6 +8,7 @@ import type {
   AnalysisResult,
   DimensionFeedback,
 } from '@/lib/aesthetic-domain';
+import { formatFeatureValue } from '@/lib/feature-value-format';
 
 type Props = {
   result: AnalysisResult;
@@ -104,7 +105,7 @@ export function DimensionReview({
           <p key={item.id} className="mt-2 text-sm">
             {item.label}：
             {item.status === 'resolved'
-              ? String(item.value)
+              ? formatFeatureValue(item.value, item.field_path ?? item.id)
               : item.status === 'mock'
                 ? 'Mock 占位，不是真实证据'
                 : '引用无效，无法解析'}

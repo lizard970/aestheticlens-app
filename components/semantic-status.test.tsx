@@ -32,7 +32,7 @@ it('shows failed semantics alongside retained successful calculations', () => {
   );
   expect(screen.getByText(/模型调用失败/)).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('MODEL_TIMEOUT');
-  expect(screen.getByText('0.625')).toBeInTheDocument();
+  expect(screen.getByText('0.63')).toBeInTheDocument();
 });
 
 it('renders model uncertainty from provenance', () => {

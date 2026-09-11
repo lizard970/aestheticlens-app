@@ -33,6 +33,15 @@ const result: AnalysisResult = {
       id: dimension.evidence[0],
       label: '平均彩度 C*ab',
       value: 42.25,
+      field_path: '/mean',
+      status: 'resolved',
+      supports_dimensions: ['color'],
+    },
+    {
+      id: 'feature:chromatic_occupancy#/chromatic_share',
+      label: '有彩色像素占比',
+      value: 0.12356,
+      field_path: '/chromatic_share',
       status: 'resolved',
       supports_dimensions: ['color'],
     },
@@ -51,6 +60,7 @@ it('renders resolved evidence and submits dimension edits without mutating origi
     />,
   );
   expect(screen.getByText('平均彩度 C*ab：42.25')).toBeInTheDocument();
+  expect(screen.getByText('有彩色像素占比：12.4%')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '修改' }));
   fireEvent.change(screen.getByLabelText('修改观察'), {
     target: { value: '人工观察' },
