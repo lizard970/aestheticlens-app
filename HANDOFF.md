@@ -1,5 +1,13 @@
 # Codex Handoff
 
+## Sticky analysis preview (2026-09-12)
+
+The current-image preview uses responsive `position: sticky` with a 1rem top offset
+in the existing three-column desktop layout, so it remains visible while the review
+column scrolls. Smaller stacked layouts, grid sizing and all other UI/backend behavior
+are unchanged; no fixed positioning is used. Validation: `pnpm typecheck` and
+`pnpm build` passed. Existing unrelated working-tree changes remain excluded.
+
 ## Five-dimension review advancement fix (2026-09-12)
 
 Fixed review navigation so a saved dimension stays on the current image and
