@@ -1,5 +1,6 @@
 import {
   fireEvent,
+  act,
   render,
   screen,
   waitFor,
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   read: vi.fn(),
   write: vi.fn(),
   analyze: vi.fn(),
+  retry: vi.fn(),
   get: vi.fn(),
   save: vi.fn(),
 }));
@@ -30,6 +32,7 @@ vi.mock('@/lib/review-queue', async (importOriginal) => ({
 vi.mock('@/lib/api-analysis-provider', () => ({
   ApiAnalysisProvider: class {
     analyze = mocks.analyze;
+    analyzeExisting = mocks.retry;
     getResult = mocks.get;
     saveFeedback = mocks.save;
     history = vi.fn().mockResolvedValue([]);
@@ -83,6 +86,7 @@ function queue(): ReviewQueue {
 it('retries a semantic failure with an existing partial result and removes only the local item', async () => {
   const state = queue();
   state.items[0].result!.provenance.semantic = { status: 'failed' };
+  state.items[0].result!.assetId = 'existing-asset';
   state.items[0].asset = {
     id: 'file',
     file: new File(['x'], 'x.png', { type: 'image/png' }),
@@ -94,10 +98,17 @@ it('retries a semantic failure with an existing partial result and removes only 
   mocks.get.mockImplementation(
     async (id: string) => state.items.find((i) => i.id === id)!.result,
   );
-  mocks.analyze.mockResolvedValue(result('retry'));
+  mocks.retry.mockResolvedValue(result('retry'));
   render(<AestheticWorkspace />);
   fireEvent.click(await screen.findByRole('button', { name: '重试当前图片' }));
-  await waitFor(() => expect(mocks.analyze).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(mocks.retry).toHaveBeenCalledWith(
+      'existing-asset',
+      expect.any(Function),
+      true,
+    ),
+  );
+  expect(mocks.analyze).not.toHaveBeenCalled();
   await waitFor(() =>
     expect(
       screen.queryByRole('button', { name: '重试当前图片' }),
@@ -107,11 +118,11 @@ it('retries a semantic failure with an existing partial result and removes only 
   fireEvent.click(await screen.findByRole('button', { name: '确认移除' }));
   await waitFor(() =>
     expect(
-      screen.queryByRole('button', { name: 'image_001 reviewing' }),
+      screen.queryByRole('button', { name: 'image_001 review_pending' }),
     ).not.toBeInTheDocument(),
   );
   expect(
-    screen.getByRole('button', { name: 'image_002 reviewing' }),
+    screen.getByRole('button', { name: 'image_002 review_pending' }),
   ).toHaveAttribute('aria-current', 'true');
   await waitFor(() =>
     expect(mocks.write).toHaveBeenLastCalledWith(
@@ -140,6 +151,82 @@ beforeEach(() => {
       }
     },
   );
+});
+
+it('reviews B while A is awaiting semantics and advances to ready C without losing either result', async () => {
+  const state = queue();
+  state.items[0].result = undefined;
+  state.items[0].asset = {
+    id: 'a',
+    file: new File(['x'], 'a.png', { type: 'image/png' }),
+    previewUrl: 'data:image/png;base64,eA==',
+    width: 1,
+    height: 1,
+  };
+  mocks.read.mockResolvedValue(state);
+  let finish!: (value: AnalysisResult) => void;
+  mocks.analyze.mockImplementation((_asset, onProgress) => {
+    onProgress({
+      assetId: 'asset-a',
+      jobId: 'job-a',
+      feature_analysis_status: 'completed',
+      semantic_analysis_status: 'processing',
+    });
+    return new Promise<AnalysisResult>((resolve) => {
+      finish = resolve;
+    });
+  });
+  mocks.save.mockResolvedValue(result('2', true));
+  render(<AestheticWorkspace />);
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: '分析未完成图片' }),
+    ).not.toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '分析未完成图片' }));
+  await screen.findByRole('button', { name: 'image_001 semantic_processing' });
+  const second = screen.getByRole('button', {
+    name: 'image_002 review_pending',
+  });
+  expect(second).not.toBeDisabled();
+  fireEvent.click(second);
+  expect(screen.getByRole('button', { name: '确认' })).not.toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  await screen.findByRole('button', { name: 'image_002 completed' });
+  expect(
+    screen.getByRole('button', { name: 'image_003 review_pending' }),
+  ).toHaveAttribute('aria-current', 'true');
+  await act(async () => {
+    finish(result('1'));
+  });
+  expect(
+    screen.getByRole('button', { name: 'image_001 review_pending' }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'image_002 completed' }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'image_003 review_pending' }),
+  ).toHaveAttribute('aria-current', 'true');
+});
+
+it('shows separated failure phases and blocks review of unsuccessful semantics', async () => {
+  const state = queue();
+  state.items[0].result!.feature_analysis_status = 'completed';
+  state.items[0].result!.semantic_analysis_status = 'failed';
+  state.items[0].result!.semantic_error_message = 'MODEL_HTTP_429';
+  mocks.read.mockResolvedValue(state);
+  mocks.get.mockImplementation(
+    async (id: string) => state.items.find((i) => i.id === id)!.result,
+  );
+  render(<AestheticWorkspace />);
+  const failed = await screen.findByRole('button', {
+    name: 'image_001 failed',
+  });
+  expect(within(failed).getByText('✓ 特征完成')).toBeInTheDocument();
+  expect(within(failed).getByText('⚠️ 语义分析失败')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent('MODEL_HTTP_429');
 });
 
 it('hides only requested navigation and accepts single/multiple files in order', async () => {
@@ -175,18 +262,18 @@ it('hides only requested navigation and accepts single/multiple files in order',
     .mockResolvedValueOnce(result('three'));
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: '分析待处理图片' }),
+      screen.getByRole('button', { name: '分析未完成图片' }),
     ).not.toBeDisabled(),
   );
-  fireEvent.click(screen.getByRole('button', { name: '分析待处理图片' }));
-  await screen.findByRole('button', { name: 'image_003 reviewing' });
+  fireEvent.click(screen.getByRole('button', { name: '分析未完成图片' }));
+  await screen.findByRole('button', { name: 'image_003 review_pending' });
   expect(mocks.analyze.mock.calls.map((call) => call[0].file.name)).toEqual([
     'one.png',
     'two.png',
     'three.png',
   ]);
   expect(
-    screen.getByRole('button', { name: 'image_002 pending' }),
+    screen.getByRole('button', { name: 'image_002 failed' }),
   ).toBeInTheDocument();
 });
 
@@ -211,7 +298,7 @@ it('advances same dimension only after saved feedback and restores position on r
   fireEvent.click(screen.getByRole('button', { name: '确认' }));
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'image_002 reviewing' }),
+      screen.getByRole('button', { name: 'image_002 review_pending' }),
     ).toHaveAttribute('aria-current', 'true'),
   );
   expect(mocks.save).toHaveBeenCalledWith(
@@ -230,7 +317,7 @@ it('advances same dimension only after saved feedback and restores position on r
   render(<AestheticWorkspace />);
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'image_002 reviewing' }),
+      screen.getByRole('button', { name: 'image_002 review_pending' }),
     ).toHaveAttribute('aria-current', 'true'),
   );
   expect(screen.getByRole('tab', { name: '色彩' })).toHaveAttribute(
@@ -240,7 +327,9 @@ it('advances same dimension only after saved feedback and restores position on r
   fireEvent.click(screen.getByRole('button', { name: '上一张' }));
   expect(screen.getByRole('tab', { name: '色彩 ✓' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '下一张' }));
-  fireEvent.click(screen.getByRole('button', { name: 'image_003 reviewing' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'image_003 review_pending' }),
+  );
   expect(screen.getByText('图片 3 / 3 · 已完成 0 / 3')).toBeInTheDocument();
 });
 

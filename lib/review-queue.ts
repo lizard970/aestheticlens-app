@@ -1,4 +1,8 @@
-import type { AnalysisResult, UploadedAsset } from './aesthetic-domain';
+import type {
+  AnalysisProgress,
+  AnalysisResult,
+  UploadedAsset,
+} from './aesthetic-domain';
 
 export interface ReviewItem {
   id: string;
@@ -6,6 +10,9 @@ export interface ReviewItem {
   asset?: UploadedAsset;
   result?: AnalysisResult;
   error?: string;
+  progress?: AnalysisProgress;
+  serverAssetId?: string;
+  reviewStarted?: boolean;
 }
 export interface ReviewQueue {
   items: ReviewItem[];
@@ -19,7 +26,39 @@ export const emptyQueue: ReviewQueue = {
 };
 
 export function canRetry(item: ReviewItem) {
-  return !item.result || item.result.provenance.semantic?.status === 'failed';
+  return (
+    !item.progress &&
+    (!item.result ||
+      phases(item).feature_analysis_status !== 'completed' ||
+      phases(item).semantic_analysis_status !== 'completed')
+  );
+}
+
+export function phases(item: ReviewItem) {
+  return (
+    item.progress ?? {
+      feature_analysis_status:
+        item.result?.feature_analysis_status ??
+        (item.result ? 'completed' : 'pending'),
+      semantic_analysis_status:
+        item.result?.semantic_analysis_status ??
+        (item.result?.provenance.semantic?.status === 'failed'
+          ? 'failed'
+          : item.result
+            ? 'completed'
+            : 'pending'),
+    }
+  );
+}
+
+export function canReview(item?: ReviewItem) {
+  return (
+    !!item?.result &&
+    !item.error &&
+    !item.progress &&
+    phases(item).feature_analysis_status === 'completed' &&
+    phases(item).semantic_analysis_status === 'completed'
+  );
 }
 
 export function reviewed(result: AnalysisResult | undefined, code: string) {
@@ -31,12 +70,35 @@ export function reviewed(result: AnalysisResult | undefined, code: string) {
 
 export function reviewStatus(
   item: ReviewItem,
-): 'pending' | 'reviewing' | 'completed' {
-  if (!item.result) return 'pending';
+):
+  | 'pending'
+  | 'feature_processing'
+  | 'semantic_processing'
+  | 'review_pending'
+  | 'reviewing'
+  | 'completed'
+  | 'failed' {
+  const stage = phases(item);
+  if (stage.feature_analysis_status === 'processing')
+    return 'feature_processing';
+  if (stage.semantic_analysis_status === 'processing')
+    return 'semantic_processing';
+  if (
+    item.error ||
+    stage.feature_analysis_status === 'failed' ||
+    stage.semantic_analysis_status === 'failed'
+  )
+    return 'failed';
+  if (!canReview(item) || !item.result) return 'pending';
   return item.result.dimensions.length === 5 &&
     item.result.dimensions.every((d) => reviewed(item.result, d.code))
     ? 'completed'
-    : 'reviewing';
+    : item.reviewStarted ||
+        item.result.humanRevision?.dimensions.some((d) =>
+          reviewed(item.result, d.code),
+        )
+      ? 'reviewing'
+      : 'review_pending';
 }
 
 export function nextReview(
@@ -47,15 +109,28 @@ export function nextReview(
     ...queue.items.slice(index + 1),
     ...queue.items.slice(0, index + 1),
   ];
+  const current = queue.items[index];
+  if (current && reviewStatus(current) === 'completed') {
+    const pending = ordered.find(
+      (item) => reviewStatus(item) === 'review_pending',
+    );
+    if (pending)
+      return {
+        currentId: pending.id,
+        dimension:
+          pending.result!.dimensions.find((d) => d.code === queue.dimension)
+            ?.code ?? pending.result!.dimensions[0].code,
+      };
+  }
   const same = ordered.find(
     (item) =>
-      !item.error &&
+      canReview(item) &&
       item.result?.dimensions.some((d) => d.code === queue.dimension) &&
       !reviewed(item.result, queue.dimension),
   );
   if (same) return { currentId: same.id, dimension: queue.dimension };
   for (const item of ordered) {
-    if (item.error) continue;
+    if (!canReview(item)) continue;
     const dimension = item.result?.dimensions.find(
       (d) => !reviewed(item.result, d.code),
     );

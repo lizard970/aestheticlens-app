@@ -72,13 +72,31 @@ async def create_asset(file: UploadFile = File(...)) -> Asset:
 
 @app.post("/api/v1/analysis-jobs", status_code=status.HTTP_202_ACCEPTED)
 def create_analysis_job(payload: AnalysisJobCreate, idempotency_key: str | None = Header(default=None)) -> AnalysisJob:
-    del idempotency_key  # Stage 1A accepts the contract; persistence will enforce it later.
+    # A UUID key also lets clients poll the existing job endpoint while this POST runs.
+    try:
+        requested_id = UUID(idempotency_key) if idempotency_key else None
+    except ValueError:
+        requested_id = None  # Preserve acceptance of legacy non-UUID keys.
+    if requested_id:
+        existing = repository.get_job(requested_id)
+        if existing:
+            if existing.target != payload.target or existing.analysis_profile_id != payload.analysis_profile_id or existing.requested_outputs != payload.requested_outputs:
+                raise HTTPException(status_code=409, detail="IDEMPOTENCY_KEY_CONFLICT")
+            return existing
     if repository.get_asset(payload.target.id) is None:
         raise HTTPException(status_code=404, detail="ASSET_NOT_FOUND")
     if payload.analysis_profile_id not in load_analysis_profiles():
         raise HTTPException(status_code=404, detail="ANALYSIS_PROFILE_NOT_FOUND")
     job = AnalysisJob(**payload.model_dump())
-    repository.save_job(job)
+    if requested_id:
+        job.id = requested_id
+        if not repository.claim_job(job):
+            existing = repository.get_job(job.id)
+            if existing is None or existing.target != payload.target or existing.analysis_profile_id != payload.analysis_profile_id or existing.requested_outputs != payload.requested_outputs:
+                raise HTTPException(status_code=409, detail="IDEMPOTENCY_KEY_CONFLICT")
+            return existing
+    else:
+        repository.save_job(job)
     try:
         analysis_service.run(job)
     except ImageNormalizationError as exc:

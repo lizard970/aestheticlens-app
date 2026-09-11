@@ -1,5 +1,37 @@
 # Codex Handoff
 
+## Independent analysis phases and concurrent review (2026-09-12)
+
+Implemented the current operator scope without changing feature/semantic algorithms,
+endpoint payloads or database schema. Separate feature_analysis_status and
+semantic_analysis_status live in existing result provenance. Successful features
+are persisted before the semantic call; failures retain sanitized error details and
+a partial job with semantic_failed stage, never a successful completed job.
+Retrying the same asset/profile reuses successful feature results and calls only
+semantic analysis (image decoding/normalization still supplies model input). Each
+retry creates a new result, preserving prior outputs and human reviews.
+
+The frontend reuses the existing asset and polls the existing job endpoint using a
+UUID Idempotency-Key while the synchronous analysis POST runs. Atomic repository
+job claiming prevents duplicate execution of the same UUID key. Existing non-UUID
+keys remain accepted. Per-image pending, feature_processing, semantic_processing,
+review_pending, reviewing, completed and failed states drive progress labels.
+Navigation and review remain available while another item analyzes; a completed
+review advances to the next review_pending item. In-flight responses merge into
+their own item without overwriting another item's review or selection.
+
+Validation: backend `python -m pytest -q` — 109 passed, 4 PostgreSQL integration
+tests skipped (test database URL absent); `pnpm test` — 30 passed;
+`pnpm typecheck`, `pnpm build`, changed-file oxlint and `git diff --check` passed.
+Full `pnpm lint` still fails on pre-existing UI-kit/hook/webmcp findings outside
+this change set; those unrelated files are not modified.
+Tests simulate quota/credential failures and verify two semantic calls but one
+feature extraction, persisted phase/error state, idempotency, progress polling,
+and reviewing B/advancing to C while A awaits semantic completion. No live model
+calls or real PostgreSQL integration verification on this host.
+Unfinished palette and unrelated adapter/config/launcher changes are excluded.
+Local commit only, no push.
+
 ## Knowledge case deletion (2026-09-11)
 
 Completed the existing uncommitted deletion API/repository/client foundation with

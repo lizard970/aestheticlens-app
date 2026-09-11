@@ -2,10 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ApiAnalysisProvider } from '@/lib/api-analysis-provider';
-import type { AnalysisResult, UploadedAsset } from '@/lib/aesthetic-domain';
+import type {
+  AnalysisProgress,
+  AnalysisResult,
+  UploadedAsset,
+} from '@/lib/aesthetic-domain';
 import {
   emptyQueue,
   canRetry,
+  canReview,
+  phases,
   nextReview,
   readQueue,
   writeQueue,
@@ -73,18 +79,20 @@ export function useReviewQueue() {
       } catch {
         if (!cancelled) setError('无法恢复本地队列；请检查浏览器存储权限。');
       }
-      const items = await Promise.all(
+      const items: ReviewItem[] = await Promise.all(
         restored.items.map(async (item) => {
-          if (!item.result) return item;
+          if (!item.result) return { ...item, progress: undefined };
           try {
             return {
               ...item,
               result: await reviewProvider.getResult(item.result.id),
               error: undefined,
+              progress: undefined,
             };
           } catch {
             return {
               ...item,
+              progress: undefined,
               error:
                 '服务器结果读取失败，当前为缓存；请重新读取历史记录后审核。',
             };
@@ -170,33 +178,77 @@ export function useReviewQueue() {
         update((current) => ({
           ...current,
           items: current.items.map((row) =>
-            row.id === item.id ? { ...row, error: undefined } : row,
+            row.id === item.id
+              ? {
+                  ...row,
+                  error: undefined,
+                  progress: {
+                    assetId: row.serverAssetId ?? '',
+                    jobId: '',
+                    feature_analysis_status:
+                      phases(row).feature_analysis_status === 'completed'
+                        ? 'completed'
+                        : 'processing',
+                    semantic_analysis_status:
+                      phases(row).feature_analysis_status === 'completed'
+                        ? 'processing'
+                        : 'pending',
+                  },
+                }
+              : row,
           ),
         }));
         try {
-          let asset = item.asset;
-          if (!asset && item.result?.previewUrl) {
-            const response = await fetch(item.result.previewUrl);
-            if (!response.ok) throw new Error('原图读取失败');
-            const blob = await response.blob();
-            asset = await createAsset(
-              new File([blob], item.name, { type: blob.type }),
-            );
-          }
-          if (!asset) throw new Error('原图不可用');
-          const result = await reviewProvider.analyze(asset);
-          update((current) => ({
-            ...current,
-            items: current.items.map((row) =>
-              row.id === item.id ? { ...row, result } : row,
-            ),
-          }));
-        } catch {
+          const serverAssetId =
+            item.serverAssetId ??
+            item.result?.assetId ??
+            item.result?.previewUrl?.match(/\/assets\/([^/]+)\/content/)?.[1];
+          const onProgress = (progress: AnalysisProgress) =>
+            update((current) => ({
+              ...current,
+              items: current.items.map((row) =>
+                row.id === item.id
+                  ? { ...row, progress, serverAssetId: progress.assetId }
+                  : row,
+              ),
+            }));
+          const result = serverAssetId
+            ? await reviewProvider.analyzeExisting(
+                serverAssetId,
+                onProgress,
+                phases(item).feature_analysis_status === 'completed',
+              )
+            : item.asset
+              ? await reviewProvider.analyze(item.asset, onProgress)
+              : await Promise.reject(new Error('原图不可用'));
           update((current) => ({
             ...current,
             items: current.items.map((row) =>
               row.id === item.id
-                ? { ...row, error: '分析失败，可重试；其他图片继续处理。' }
+                ? {
+                    ...row,
+                    result,
+                    progress: undefined,
+                    error: undefined,
+                    reviewStarted: false,
+                    serverAssetId: result.assetId ?? row.serverAssetId,
+                  }
+                : row,
+            ),
+          }));
+        } catch (reason) {
+          update((current) => ({
+            ...current,
+            items: current.items.map((row) =>
+              row.id === item.id
+                ? {
+                    ...row,
+                    progress: undefined,
+                    error:
+                      reason instanceof Error
+                        ? reason.message
+                        : '分析失败，可重试；其他图片继续处理。',
+                  }
                 : row,
             ),
           }));
@@ -264,6 +316,15 @@ export function useReviewQueue() {
     analyze,
     openHistory,
     saved,
+    beginReview: () =>
+      update((current) => ({
+        ...current,
+        items: current.items.map((item) =>
+          item.id === current.currentId && canReview(item)
+            ? { ...item, reviewStarted: true }
+            : item,
+        ),
+      })),
     removeCurrent: () => {
       if (lock.current) return;
       update((current) => {
@@ -284,7 +345,15 @@ export function useReviewQueue() {
       });
     },
     select: (id: string) =>
-      update((current) => ({ ...current, currentId: id })),
+      update((current) => ({
+        ...current,
+        currentId: id,
+        items: current.items.map((item) =>
+          item.id === id && canReview(item)
+            ? { ...item, reviewStarted: true }
+            : item,
+        ),
+      })),
     dimension: (code: string) =>
       update((current) => ({ ...current, dimension: code })),
   };

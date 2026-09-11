@@ -25,12 +25,22 @@ import {
 } from '@/components/spatial-composition-features';
 import { SemanticStatus } from '@/components/semantic-status';
 import { reviewProvider, useReviewQueue } from '@/components/use-review-queue';
-import { reviewed, reviewStatus, canRetry } from '@/lib/review-queue';
+import {
+  reviewed,
+  reviewStatus,
+  canRetry,
+  canReview,
+  phases,
+} from '@/lib/review-queue';
 
 const labels = {
   pending: '待分析',
-  reviewing: '待审核',
+  feature_processing: '分析中 · 特征提取',
+  semantic_processing: '分析中 · 语义调用',
+  review_pending: '待审核',
+  reviewing: '审核中',
   completed: '审核完成',
+  failed: '失败',
 };
 
 export function AestheticWorkspace() {
@@ -43,6 +53,7 @@ export function AestheticWorkspace() {
   const item = queue.items[index];
   const result = item?.result;
   const disabled = !flow.ready || flow.busy || saving;
+  const navigationDisabled = !flow.ready || saving;
   const preview = item?.asset?.previewUrl ?? result?.previewUrl;
   const dimensionCode = result?.dimensions.some(
     (d) => d.code === queue.dimension,
@@ -86,7 +97,7 @@ export function AestheticWorkspace() {
                 disabled={disabled || !queue.items.some(canRetry)}
                 onClick={() => void flow.analyze()}
               >
-                {flow.busy ? '处理中…' : '分析待处理图片'}
+                {flow.busy ? '处理中…' : '分析未完成图片'}
               </Button>
             </div>
           </div>
@@ -109,7 +120,7 @@ export function AestheticWorkspace() {
                 删除当前图片
               </Button>
               <span className="text-sm text-muted-foreground">
-                删除仅移出本地队列；重试会创建新分析，原结果和审核记录保留。
+                特征完成后重试仅调用语义分析；删除仅移出本地队列。
               </span>
             </div>
           )}
@@ -163,7 +174,7 @@ export function AestheticWorkspace() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={disabled || index <= 0}
+                disabled={navigationDisabled || index <= 0}
                 onClick={() => flow.select(queue.items[index - 1].id)}
               >
                 上一张
@@ -172,7 +183,9 @@ export function AestheticWorkspace() {
                 size="sm"
                 variant="outline"
                 disabled={
-                  disabled || index < 0 || index >= queue.items.length - 1
+                  navigationDisabled ||
+                  index < 0 ||
+                  index >= queue.items.length - 1
                 }
                 onClick={() => flow.select(queue.items[index + 1].id)}
               >
@@ -196,7 +209,7 @@ export function AestheticWorkspace() {
                   type="button"
                   aria-current={row.id === queue.currentId ? 'true' : undefined}
                   aria-label={`${row.name} ${reviewStatus(row)}`}
-                  disabled={disabled}
+                  disabled={navigationDisabled}
                   onClick={() => flow.select(row.id)}
                   className={`w-32 shrink-0 rounded-lg border p-2 text-left xl:w-full ${row.id === queue.currentId ? 'border-amber-300 bg-amber-300/5' : 'border-white/10'}`}
                 >
@@ -214,6 +227,20 @@ export function AestheticWorkspace() {
                   {row.error && (
                     <span className="block text-xs text-red-300">需重试</span>
                   )}
+                  <span className="block text-xs">
+                    {phases(row).feature_analysis_status === 'completed'
+                      ? '✓ 特征完成'
+                      : phases(row).feature_analysis_status === 'failed'
+                        ? '⚠️ 特征失败'
+                        : '特征未完成'}
+                  </span>
+                  <span className="block text-xs">
+                    {phases(row).semantic_analysis_status === 'completed'
+                      ? '✓ 语义完成'
+                      : phases(row).semantic_analysis_status === 'failed'
+                        ? '⚠️ 语义分析失败'
+                        : '语义未完成'}
+                  </span>
                 </button>
               ))}
             </aside>
@@ -256,6 +283,11 @@ export function AestheticWorkspace() {
               {item?.error && (
                 <p role="alert" className="mt-3 text-sm text-red-300">
                   {item.error}
+                </p>
+              )}
+              {item?.result?.semantic_error_message && (
+                <p role="alert" className="mt-3 text-sm text-red-300">
+                  语义分析失败：{item.result.semantic_error_message}
                 </p>
               )}
             </section>
@@ -318,8 +350,11 @@ export function AestheticWorkspace() {
                             key={`${result.id}:${d.code}`}
                             result={result}
                             dimension={d}
-                            disabled={flow.busy || !!item?.error}
-                            onPendingChange={setSaving}
+                            disabled={!canReview(item)}
+                            onPendingChange={(pending) => {
+                              setSaving(pending);
+                              if (pending) flow.beginReview();
+                            }}
                             save={(id, feedback) =>
                               reviewProvider.saveFeedback(id, feedback)
                             }
