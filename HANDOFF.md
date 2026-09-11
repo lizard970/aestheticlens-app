@@ -1,5 +1,24 @@
 # Codex Handoff
 
+## Model-input and frontend numeric formatting (2026-09-12)
+
+Added presentation-boundary formatting without changing extraction calculations,
+FeatureResult values or database persistence. The semantic adapter creates a separate
+model-facing evidence/normalization copy: fields identified by share, ratio, fraction,
+occupancy or coverage are rounded to three decimal places; other continuous values
+are rounded to two; counters remain integers. Raw evidence remains available to
+repository, search and evidence-resolution logic. Rendered model evidence uses the
+same formatted copy.
+
+Frontend computation cards, resolved Evidence and nested technical details now show
+ratio fields as percentages with one decimal and continuous metrics with two decimals.
+Existing color formatting already matched this policy. Percentage-valued fields are
+not multiplied a second time. Validation: backend `python -m pytest -q` — 110 passed,
+4 PostgreSQL tests skipped; frontend `pnpm test` — 33 passed; `pnpm typecheck`,
+`pnpm build`, targeted oxlint and `git diff --check` passed. Tests assert raw precision
+is unchanged while GPT/display copies are rounded. Unrelated existing palette,
+zero-shot configuration, provider prompt and launcher changes remain excluded.
+
 ## Sticky analysis preview (2026-09-12)
 
 The current-image preview uses responsive `position: sticky` with a 1rem top offset

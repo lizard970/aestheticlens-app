@@ -9,8 +9,8 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const numberText = (value: unknown, digits = 3) =>
-  typeof value === 'number' ? value.toFixed(digits) : '—';
+const numberText = (value: unknown) =>
+  typeof value === 'number' ? value.toFixed(2) : '—';
 
 const percentText = (value: unknown) =>
   typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—';

@@ -90,6 +90,8 @@ export interface ResolvedEvidence {
   id: string;
   label: string;
   value: unknown;
+  extractor_code?: string | null;
+  field_path?: string | null;
   status: 'resolved' | 'invalid' | 'mock';
   supports_dimensions: string[];
 }

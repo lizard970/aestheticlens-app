@@ -124,6 +124,53 @@ def feature_evidence(features: list[FeatureResult]) -> dict[str, Any]:
     return evidence
 
 
+_RATIO_FIELD = re.compile(r"(?:^|_)(?:share|ratio|fraction|occupancy|coverage)(?:_|$)")
+_PERCENTAGE_FIELD = re.compile(r"(?:^|_)percentage(?:_|$)")
+_INTEGER_FIELD = re.compile(
+    r"(?:^|_)(?:count|counts|width|height|rank|bins?|iterations?|bytes|channels|bit_depth)(?:_|$)"
+)
+
+
+def _numeric_field_path(path: str) -> str:
+    pointer = path.split("#", 1)[-1]
+    return "_".join(part for part in pointer.split("/") if part and not part.isdigit())
+
+
+def _format_semantic_number(value: int | float, path: str) -> int | float:
+    field = _numeric_field_path(path)
+    if _PERCENTAGE_FIELD.search(field) or _RATIO_FIELD.search(field):
+        return round(value, 3)
+    if isinstance(value, int) and _INTEGER_FIELD.search(field):
+        return value
+    return round(value, 2)
+
+
+def semantic_feature_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Round only the model-facing copy; persisted FeatureResult values stay raw."""
+    return {
+        path: _format_semantic_number(value, path)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else value
+        for path, value in evidence.items()
+    }
+
+
+def semantic_numeric_payload(value: Any, path: str = "") -> Any:
+    """Recursively format non-feature numeric metadata sent to the model."""
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return _format_semantic_number(value, path)
+    if isinstance(value, dict):
+        return {
+            key: semantic_numeric_payload(child, f"{path}/{key}")
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [semantic_numeric_payload(child, f"{path}/{index}") for index, child in enumerate(value)]
+    return value
+
+
 def normalized_png(image: NormalizedImage) -> str:
     buffer = BytesIO()
     Image.fromarray(np.rint(np.clip(image.srgb, 0, 1) * 255).astype(np.uint8)).save(buffer, format="PNG")
@@ -191,7 +238,7 @@ class ChatCompletionsAdapter:
         try:
             prompt = json.loads((CONFIG_DIR / "semantic_prompt.json").read_text(encoding="utf-8"))
             vocabulary = json.loads((CONFIG_DIR / "style_vocabulary.json").read_text(encoding="utf-8"))
-            evidence = feature_evidence(features)
+            evidence = semantic_feature_evidence(feature_evidence(features))
             metadata.update(prompt_version=prompt["version"], vocabulary_version=vocabulary["version"])
             payload = {
                 "model": settings.model, "max_completion_tokens": settings.max_completion_tokens,
@@ -204,7 +251,7 @@ class ChatCompletionsAdapter:
                             "schema": SemanticOutput.model_json_schema(),
                             "style_vocabulary": vocabulary,
                             "feature_evidence": evidence,
-                            "normalization": image.provenance,
+                            "normalization": semantic_numeric_payload(image.provenance),
                             "feature_versions": {f.extractor_code: f.extractor_version for f in features if f.status == "succeeded"},
                         }, ensure_ascii=False)},
                         {"type": "image_url", "image_url": {"url": normalized_png(image)}},
