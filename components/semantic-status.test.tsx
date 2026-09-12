@@ -31,7 +31,11 @@ it('shows failed semantics alongside retained successful calculations', () => {
     </>,
   );
   expect(screen.getByText(/模型调用失败/)).toBeInTheDocument();
-  expect(screen.getByRole('alert')).toHaveTextContent('MODEL_TIMEOUT');
+  const warning = screen.getByText('MODEL_TIMEOUT');
+  expect(warning).not.toBeVisible();
+  expect(warning.closest('details')).not.toHaveAttribute('open');
+  warning.closest('details')!.open = true;
+  expect(warning).toBeVisible();
   expect(screen.getByText('0.63')).toBeInTheDocument();
 });
 

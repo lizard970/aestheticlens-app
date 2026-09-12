@@ -23,7 +23,10 @@ import {
   CompositionComputationalFeatures,
   SpaceComputationalFeatures,
 } from '@/components/spatial-composition-features';
-import { SemanticStatus } from '@/components/semantic-status';
+import {
+  SemanticStatus,
+  splitAnalysisLimitation,
+} from '@/components/semantic-status';
 import { reviewProvider, useReviewQueue } from '@/components/use-review-queue';
 import {
   reviewed,
@@ -305,7 +308,7 @@ export function AestheticWorkspace() {
                 <>
                   <h2 className="text-lg font-semibold">五维人工审核</h2>
                   <p className="my-2 text-sm">{result.summary}</p>
-                  <SemanticStatus result={result} />
+                  <SemanticStatus key={result.id} result={result} />
                   <p className="my-3 text-sm text-muted-foreground">
                     保存成功后，自动切换当前图片的下一未审核维度；五维完成后进入下一张。
                   </p>
@@ -337,9 +340,11 @@ export function AestheticWorkspace() {
                           className="space-y-3 rounded-xl border border-white/10 p-3"
                         >
                           <h3 className="font-medium">{d.label} · AI 结果</h3>
-                          <p className="text-sm leading-6">{d.observation}</p>
                           <p className="text-sm leading-6">
-                            {d.interpretation}
+                            {splitAnalysisLimitation(d.observation).text}
+                          </p>
+                          <p className="text-sm leading-6">
+                            {splitAnalysisLimitation(d.interpretation).text}
                           </p>
                           {d.code === 'style' && (
                             <p className="text-sm">
@@ -369,6 +374,7 @@ export function AestheticWorkspace() {
                                 features={result.features}
                                 completionStatus={result.completionStatus}
                                 resultWarnings={result.warnings}
+                                hideWarnings
                               />
                             )}
                             {d.code === 'color' && (
