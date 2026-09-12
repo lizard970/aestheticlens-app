@@ -1,5 +1,16 @@
 # Codex Handoff
 
+## Collapsed review limitations (2026-09-12)
+
+Five-dimension review now groups result/feature warnings and semantic uncertainty
+in one native details disclosure titled 分析限制. Its default summary shows counts;
+expanding reveals complete messages. Explicit adapter-appended uncertainty suffixes
+are displayed there instead of duplicated in AI card prose; original result strings
+and review payloads remain intact. Computational warnings are suppressed only in
+this workspace because the same messages appear in the shared disclosure.
+No backend or analysis changes. Validation: `pnpm test` 33 passed;
+`pnpm typecheck`, `pnpm build`, targeted oxlint and diff checks passed.
+
 ## Model-input and frontend numeric formatting (2026-09-12)
 
 Added presentation-boundary formatting without changing extraction calculations,

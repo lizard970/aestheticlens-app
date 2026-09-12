@@ -8,6 +8,7 @@ type Props = {
   features: FeatureResult[];
   completionStatus: 'complete' | 'partial';
   resultWarnings: string[];
+  hideWarnings?: boolean;
 };
 type Metric = {
   label: string;
@@ -52,6 +53,7 @@ export function ComputationalFeatures({
   features,
   completionStatus,
   resultWarnings,
+  hideWarnings = false,
 }: Props) {
   if (features.length === 0)
     return (
@@ -138,16 +140,17 @@ export function ComputationalFeatures({
           当前结果状态：{completionStatus}
         </span>
       </div>
-      {(failed.length > 0 || warnings.length > 0) && (
+      {(failed.length > 0 || (!hideWarnings && warnings.length > 0)) && (
         <div className="mb-4 rounded-lg border border-amber-300/20 bg-amber-300/7 p-3 text-xs leading-5 text-amber-100">
           {failed.map((item) => (
             <p key={item.extractor_code}>
               提取失败 · {item.extractor_code}：{item.error_detail}
             </p>
           ))}
-          {warnings.map((warning) => (
-            <p key={warning}>色彩配置警告：{warning}</p>
-          ))}
+          {!hideWarnings &&
+            warnings.map((warning) => (
+              <p key={warning}>色彩配置警告：{warning}</p>
+            ))}
         </div>
       )}
       {tonal?.status === 'succeeded' ? (
