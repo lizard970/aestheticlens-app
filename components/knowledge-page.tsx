@@ -25,7 +25,12 @@ export function KnowledgeEvidence({
   return (
     <div className="space-y-3 text-sm">
       <p>AI 建议标签：{result.tags.join(' · ') || '暂无'}</p>
-      <p>人工确认标签：当前接口未提供独立的逐标签审核字段。</p>
+      <p>
+        人工确认标签：
+        {result.humanRevision?.tags != null
+          ? result.humanRevision.tags.join(' · ') || '无风格标签'
+          : '当前接口未提供独立的逐标签审核字段。'}
+      </p>
       <p>人工审核状态：{caseStatus(result)}</p>
       <dl className="space-y-3">
         {['composition', 'color', 'lighting', 'space', 'style'].map((code) => {
@@ -111,6 +116,12 @@ export function KnowledgePage() {
     return () => { active = false; };
   }, []);
   const tags = [...new Set(cases.flatMap((c) => c.entry.tags))].sort();
+  const confirmedTags = new Set(
+    cases.flatMap((c) => c.result?.humanRevision?.tags ?? []),
+  );
+  const hasTagRevisions = cases.some(
+    (c) => c.result?.humanRevision?.tags != null,
+  );
   const times = cases
     .map((c) => lastReview(c.result))
     .filter((n): n is number => n !== null);
@@ -132,9 +143,11 @@ export function KnowledgePage() {
       <div className="flex flex-wrap gap-6 rounded-xl border border-white/10 p-4">
         <p>已收录案例数量：{loading ? '读取中' : cases.length}</p>
         <p>
-          已确认标签数量：—{' '}
+          已确认标签数量：{hasTagRevisions ? confirmedTags.size : '—'}{' '}
           <span className="text-sm text-muted-foreground">
-            无独立标签确认字段；已审核案例关联标签 {tags.length} 种
+            {hasTagRevisions
+              ? '按当前人工版本统计'
+              : `无独立标签确认字段；已审核案例关联标签 ${tags.length} 种`}
           </span>
         </p>
         <p>

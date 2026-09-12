@@ -133,6 +133,9 @@ it('does not invent human review when fields are absent', () => {
 it('loads structured cases, sends hybrid conditions and shows provider errors', async () => {
   render(<SearchPage />);
   await screen.findByRole('link', { name: 'cinema.png' });
+  expect(
+    screen.getByRole('img', { name: 'cinema.png 缩略图' }),
+  ).toHaveAttribute('src', '/image');
   expect(mocks.search).toHaveBeenCalledWith('structured', {
     tags: [],
     numeric_filters: [],

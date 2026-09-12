@@ -47,7 +47,7 @@ export function SemanticStatus({ result }: { result: AnalysisResult }) {
           <p
             role="alert"
             key={`${index}:${warning}`}
-            className="text-sm text-amber-200"
+            className="text-sm text-muted-foreground"
           >
             {warning}
           </p>
@@ -55,7 +55,7 @@ export function SemanticStatus({ result }: { result: AnalysisResult }) {
         {[...limitations].map((reason) => (
           <p
             key={reason}
-            className="whitespace-pre-wrap text-sm text-amber-200"
+            className={`whitespace-pre-wrap text-sm ${reason.includes('：【高不确定性】') ? 'text-amber-200' : 'text-muted-foreground'}`}
           >
             {reason}
           </p>

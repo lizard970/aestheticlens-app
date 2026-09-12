@@ -47,6 +47,9 @@ export function DimensionReview({
     current?.interpretation ?? dimension.interpretation,
   );
   const [note, setNote] = useState('');
+  const [tags, setTags] = useState(
+    (result.humanRevision?.tags ?? result.tags).join(', '),
+  );
   const [category, setCategory] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +74,24 @@ export function DimensionReview({
         feedback_type: type,
         target_path: `/dimensions/${dimension.code}`,
         ...(type === 'edit'
-          ? { corrected_value: { observation, interpretation } }
+          ? {
+              corrected_value: {
+                observation,
+                interpretation,
+                ...(dimension.code === 'style'
+                  ? {
+                      tags: [
+                        ...new Set(
+                          tags
+                            .split(/[,，\n]/)
+                            .map((tag) => tag.trim())
+                            .filter(Boolean),
+                        ),
+                      ],
+                    }
+                  : {}),
+              },
+            }
           : {}),
         comment: note.trim() || null,
         error_category: category.trim() || null,
@@ -155,8 +175,26 @@ export function DimensionReview({
           </p>
         </div>
       )}
+      {dimension.code === 'style' && (
+        <p className="text-sm">
+          当前标签：
+          {(result.humanRevision?.tags ?? result.tags).join(' · ') ||
+            '无风格标签'}
+        </p>
+      )}
       {editing && (
         <>
+          {dimension.code === 'style' && (
+            <label className="block text-sm" htmlFor={`${formId}-tags`}>
+              风格标签（逗号分隔，可全部删除）
+              <Textarea
+                aria-label="修改风格标签"
+                id={`${formId}-tags`}
+                value={tags}
+                onChange={(event) => setTags(event.target.value)}
+              />
+            </label>
+          )}
           <label className="block text-sm" htmlFor={`${formId}-observation`}>
             修改观察
             <Textarea
@@ -220,6 +258,7 @@ export function DimensionReview({
           disabled={pending || disabled}
           onClick={() => {
             setObservation(current?.observation ?? dimension.observation);
+            setTags((result.humanRevision?.tags ?? result.tags).join(', '));
             setInterpretation(
               current?.interpretation ?? dimension.interpretation,
             );

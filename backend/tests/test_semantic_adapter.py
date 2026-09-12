@@ -85,7 +85,7 @@ def test_success_sends_normalized_image_features_schema_and_keeps_usage():
     assert result.tags == []
     assert result.metadata["usage"]["total_tokens"] == 150
     assert result.metadata["cost"] is None
-    assert result.metadata["prompt_version"] == "1.0.0"
+    assert result.metadata["prompt_version"] == "1.1.0-refine-50"
     assert "fixture-secret" not in json.dumps(result.metadata)
 
 
@@ -114,6 +114,35 @@ def test_model_numeric_formatting_does_not_mutate_raw_feature_precision():
         "alpha_coverage": 0.457,
         "width": 1920,
     }
+
+
+@pytest.mark.parametrize("mode", [True, False])
+@pytest.mark.parametrize("scenario, expected, forbidden, rule", [
+    ("digital illustration", "数字插画/电子绘制倾向", "无法区分绘制材料", "明显digital illustration"),
+    ("flat graphic-pattern", "光影不是主要组织手段", "真实光源未知", "平涂且无明暗建模"),
+    ("painting shadows", "画面内部主光方向倾向左上方", "无法证明真实现场", "投影/阴影方向是否一致"),
+    ("smooth electronic rings", "电子环纹，无绘画笔触", "painterly", "可见笔触"),
+    ("decorative stars and moon", "装饰性星月组合", "surrealist", "常规装饰符号堆叠"),
+])
+def test_refine_policy_dispatch_and_conclusion_contract(mode, scenario, expected, forbidden, rule):
+    # Offline contract regression: checks policy dispatch + accepted conclusions,
+    # not the accuracy of a real vision model on the fifty-image dataset.
+    data = output()
+    for dimension in data["dimensions"]:
+        dimension.update(observation=expected, interpretation=expected, uncertainty=None)
+        if not mode or dimension["code"] not in {"lighting", "color"}:
+            dimension["evidence_refs"] = []
+    data["tags"] = []
+    def handler(request):
+        body = json.loads(request.content)
+        content = body["messages"][1]["content"]
+        assert rule in body["messages"][0]["content"] + content[0]["text"]
+        assert "不要输出CoT" in body["messages"][0]["content"]
+        return response(data)
+    result = adapter(handler, use_feature_evidence=mode).analyze(*inputs())
+    assert result.tags == []
+    assert all(d.interpretation == expected and forbidden not in d.interpretation for d in result.dimensions)
+    assert result.metadata["uncertainty"] == {}
 
 
 @pytest.mark.parametrize("case", ["json", "schema", "reference", "tag", "duplicate_dimension", "inline_number", "inline_reference"])

@@ -97,6 +97,8 @@ export interface ResolvedEvidence {
 }
 
 export interface HumanRevision {
+  tags?: string[] | null;
+  knowledge_excluded?: boolean;
   revision: number;
   dimensions: Array<{
     code: string;
@@ -111,7 +113,9 @@ export interface HumanRevision {
 export interface DimensionFeedback {
   feedback_type: 'accept' | 'edit' | 'reject';
   target_path: string;
-  corrected_value?: { observation: string; interpretation: string };
+  corrected_value?:
+    | { observation: string; interpretation: string; tags?: string[] }
+    | boolean;
   comment: string | null;
   error_category: string | null;
   base_revision: number;

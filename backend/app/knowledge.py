@@ -23,6 +23,8 @@ def searchable_revision(repository: Repository, result: AnalysisResult) -> Human
     if not result.features or not any(feature.status == "succeeded" for feature in result.features):
         return None
     revision = ReviewService(repository).revision(result.id)
+    if revision.knowledge_excluded:
+        return None
     if not revision.dimensions or any(item.review_status not in {"accept", "edit"} for item in revision.dimensions):
         return None
     if any(item.status != "resolved" for item in resolve_evidence(result)):
@@ -67,7 +69,7 @@ class StoredKnowledgeRepository:
             revision = searchable_revision(self.repository, result)
             if revision is None:
                 continue
-            if not set(query.tags).issubset(result.tags):
+            if not set(query.tags).issubset(revision.tags if revision.tags is not None else result.tags):
                 continue
             values = feature_evidence(result.features)
             def passes(condition):
@@ -81,15 +83,16 @@ class StoredKnowledgeRepository:
                 continue
             matches.append(SearchableCase(asset_id=asset.id, result_id=result.id, job_id=job.id,
                                           original_filename=asset.original_filename,
-                                          preview_url=f"/api/v1/assets/{asset.id}/content", tags=result.tags,
+                                          preview_url=f"/api/v1/assets/{asset.id}/content", tags=revision.tags if revision.tags is not None else result.tags,
                                           revision=revision.revision, preview_text=revision.dimensions[0].observation))
         return matches
 
 
 def embedding_text(result: AnalysisResult, revision: HumanRevision) -> str:
     parts = [f"Summary: {result.summary}"]
-    if result.tags:
-        parts.append("Style tags: " + ", ".join(result.tags))
+    tags = revision.tags if revision.tags is not None else result.tags
+    if tags:
+        parts.append("Style tags: " + ", ".join(tags))
     parts.extend(dimension.interpretation for dimension in revision.dimensions)
     return "\n".join(parts)
 
@@ -128,7 +131,7 @@ class SemanticSearchService:
             if asset is None:
                 continue
             matches.append(SemanticSearchCase(
-                asset_id=asset.id, result_id=result.id, similarity=similarity, tags=result.tags,
+                asset_id=asset.id, result_id=result.id, similarity=similarity, tags=revision.tags if revision.tags is not None else result.tags,
                 original_filename=asset.original_filename,
                 preview_url=f"/api/v1/assets/{asset.id}/content", revision=revision.revision,
                 preview_text=revision.dimensions[0].interpretation,
@@ -145,7 +148,7 @@ class HybridSearchService:
         candidates = {}
         for result in self.repository.list_results():
             revision = searchable_revision(self.repository, result)
-            if revision is None or not set(query.tags).issubset(result.tags):
+            if revision is None or not set(query.tags).issubset(revision.tags if revision.tags is not None else result.tags):
                 continue
             if not passes_numeric_filters(result, query.numeric_filters):
                 continue
@@ -177,7 +180,7 @@ class HybridSearchService:
             if revision.revision != stored_revision:
                 continue
             matches.append(HybridSearchCase(
-                asset_id=asset.id, result_id=result.id, similarity=similarity, tags=result.tags,
+                asset_id=asset.id, result_id=result.id, similarity=similarity, tags=revision.tags if revision.tags is not None else result.tags,
                 matched_structured_conditions=conditions,
                 original_filename=asset.original_filename,
                 preview_url=f"/api/v1/assets/{asset.id}/content", revision=revision.revision,

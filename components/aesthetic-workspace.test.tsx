@@ -192,7 +192,11 @@ it('reviews B while A is awaiting semantics and advances to ready C without losi
   fireEvent.click(second);
   expect(screen.getByRole('button', { name: '确认' })).not.toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '确认' }));
-  await screen.findByRole('button', { name: 'image_002 completed' });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: 'image_002 completed' }),
+    ).not.toBeInTheDocument(),
+  );
   expect(
     screen.getByRole('button', { name: 'image_003 review_pending' }),
   ).toHaveAttribute('aria-current', 'true');
@@ -203,8 +207,8 @@ it('reviews B while A is awaiting semantics and advances to ready C without losi
     screen.getByRole('button', { name: 'image_001 review_pending' }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole('button', { name: 'image_002 completed' }),
-  ).toBeInTheDocument();
+    screen.queryByRole('button', { name: 'image_002 completed' }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole('button', { name: 'image_003 review_pending' }),
   ).toHaveAttribute('aria-current', 'true');
@@ -359,7 +363,10 @@ it('restores completed state and skips completed, pending and failed candidates'
     async (id: string) => state.items.find((i) => i.id === id)!.result,
   );
   render(<AestheticWorkspace />);
-  await screen.findByRole('button', { name: 'image_001 completed' });
+  await screen.findByRole('button', { name: 'image_002 review_pending' });
+  expect(
+    screen.queryByRole('button', { name: 'image_001 completed' }),
+  ).not.toBeInTheDocument();
   expect(reviewStatus(state.items[0])).toBe('completed');
   state.items[1].error = 'offline';
   expect(nextReview(state)).toEqual({ currentId: '3', dimension: 'lighting' });
@@ -376,4 +383,38 @@ it('keeps the current image until all five dimensions are reviewed', () => {
     dimension.review_status = 'accept';
   }
   expect(nextReview(state)).toEqual({ currentId: '2', dimension: 'lighting' });
+});
+
+it('persists case exclusion before removing the item and leaves failed saves retryable', async () => {
+  const state = queue();
+  mocks.read.mockResolvedValue(state);
+  mocks.save.mockRejectedValueOnce(new Error('offline'));
+  const excluded = result('1');
+  excluded.humanRevision!.knowledge_excluded = true;
+  mocks.save.mockResolvedValueOnce(excluded);
+  render(<AestheticWorkspace />);
+  fireEvent.click(await screen.findByRole('button', { name: '不收录知识库' }));
+  await screen.findByText('不收录决定保存失败，请重试。');
+  expect(
+    screen.getByRole('button', { name: 'image_001 review_pending' }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '不收录知识库' }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: 'image_001 review_pending' }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(mocks.save).toHaveBeenLastCalledWith(
+    '1',
+    expect.objectContaining({
+      target_path: '/knowledge_excluded',
+      feedback_type: 'edit',
+      corrected_value: true,
+    }),
+  );
+  expect(mocks.write).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      items: expect.not.arrayContaining([expect.objectContaining({ id: '1' })]),
+    }),
+  );
 });

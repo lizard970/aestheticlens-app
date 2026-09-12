@@ -51,6 +51,7 @@ export function AestheticWorkspace() {
   const flow = useReviewQueue();
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [excludeError, setExcludeError] = useState<string | null>(null);
   const { queue } = flow;
   const index = queue.items.findIndex((item) => item.id === queue.currentId);
   const item = queue.items[index];
@@ -307,6 +308,27 @@ export function AestheticWorkspace() {
               ) : (
                 <>
                   <h2 className="text-lg font-semibold">五维人工审核</h2>
+                  <Button
+                    variant="outline"
+                    disabled={saving}
+                    onClick={async () => {
+                      setSaving(true);
+                      setExcludeError(null);
+                      try {
+                        await flow.excludeCurrent();
+                      } catch {
+                        setExcludeError('不收录决定保存失败，请重试。');
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    不收录知识库
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    案例级决定，保留原图和审核历史。
+                  </p>
+                  {excludeError && <p role="alert">{excludeError}</p>}
                   <p className="my-2 text-sm">{result.summary}</p>
                   <SemanticStatus key={result.id} result={result} />
                   <p className="my-3 text-sm text-muted-foreground">

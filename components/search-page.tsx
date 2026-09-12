@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element -- Existing API preview URLs serve originals without an image proxy. */
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { searchCases, type KnowledgeCase } from '@/lib/knowledge-api';
@@ -171,12 +172,20 @@ export function SearchPage() {
         <p role="alert">检索失败：{error}。请检查条件或服务配置后重试。</p>
       )}
       {!loading && !error && <p>找到 {items.length} 个案例</p>}
-      <div className="space-y-3">
+      <div className="columns-1 gap-4 sm:columns-2 xl:columns-3">
         {items.map((item) => (
           <article
             key={item.result_id}
-            className="rounded-xl border border-white/10 p-4"
+            className="mb-4 break-inside-avoid rounded-xl border border-white/10 p-4"
           >
+            <Link href={`/knowledge/${item.result_id}`}>
+              <img
+                src={item.preview_url}
+                alt={`${item.original_filename} 缩略图`}
+                loading="lazy"
+                className="mb-3 h-auto w-full rounded-lg"
+              />
+            </Link>
             <label className="mr-3">
               <input
                 type="checkbox"

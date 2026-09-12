@@ -42,6 +42,35 @@ def confirm(client, result):
         assert save(client, result, dimension.code).status_code == 201
 
 
+def test_human_tags_exclusion_history_and_raw_output(stored):
+    repository, result, client = stored
+    raw = result.model_dump()
+    confirm(client, result)
+    edited = save(client, result, "style", "edit", base_revision=5, corrected_value={
+        "observation": "Human", "interpretation": "Human style", "tags": ["human-tag"],
+    })
+    assert edited.status_code == 201
+    assert search(client, tags=["human-tag"]).json()["items"][0]["tags"] == ["human-tag"]
+    assert search(client, tags=["minimalist"]).json()["items"] == []
+    excluded = client.post(f"/api/v1/analysis-results/{result.id}/feedback", json={
+        "feedback_type": "edit", "target_path": "/knowledge_excluded", "corrected_value": True, "base_revision": 6,
+    })
+    assert excluded.status_code == 201
+    assert search(client).json()["items"] == []
+    view = ReviewService(repository).view(result.id)
+    assert view.human_revision.knowledge_excluded
+    assert all(d.review_status in {"accept", "edit"} for d in view.human_revision.dimensions)
+    assert ReviewService(repository).revision(result.id, 5).tags == raw["tags"]
+    assert not ReviewService(repository).revision(result.id, 6).knowledge_excluded
+    assert repository.get_result(result.id).model_dump() == raw
+    assert client.get(view.preview_url).content == b"fixture"
+    assert save(client, result, "style", "edit", base_revision=7, corrected_value={
+        "observation": "Human", "interpretation": "Weak style signal", "tags": [],
+    }).status_code == 201
+    assert ReviewService(repository).revision(result.id).tags == []
+    assert ReviewService(repository).revision(result.id).knowledge_excluded
+
+
 def search(client, **kwargs):
     return client.post("/api/v1/search/structured", json=kwargs)
 

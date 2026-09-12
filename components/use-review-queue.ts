@@ -13,6 +13,7 @@ import {
   canReview,
   phases,
   nextReview,
+  reviewStatus,
   readQueue,
   writeQueue,
   type ReviewItem,
@@ -114,10 +115,18 @@ export function useReviewQueue() {
       }
       if (cancelled) return;
       const linked = items.find((item) => item.result?.id === id);
+      const active = items.filter(
+        (item) =>
+          reviewStatus(item) !== 'completed' &&
+          !item.result?.humanRevision?.knowledge_excluded,
+      );
+      const currentId = linked?.id ?? restored.currentId;
       update(() => ({
         ...restored,
-        items,
-        currentId: linked?.id ?? restored.currentId,
+        items: active,
+        currentId: active.some((item) => item.id === currentId)
+          ? currentId
+          : (active[0]?.id ?? null),
       }));
       if (linked) {
         const url = new URL(window.location.href);
@@ -303,7 +312,20 @@ export function useReviewQueue() {
           item.result?.id === result.id ? { ...item, result } : item,
         ),
       };
-      return { ...updated, ...nextReview(updated) };
+      const next = nextReview(updated);
+      const items = updated.items.filter(
+        (item) =>
+          reviewStatus(item) !== 'completed' &&
+          !item.result?.humanRevision?.knowledge_excluded,
+      );
+      return {
+        ...updated,
+        ...next,
+        items,
+        currentId: items.some((item) => item.id === next.currentId)
+          ? next.currentId
+          : (items.find(canReview)?.id ?? items[0]?.id ?? null),
+      };
     });
   }
 
@@ -316,6 +338,21 @@ export function useReviewQueue() {
     analyze,
     openHistory,
     saved,
+    excludeCurrent: async () => {
+      const item = state.current.items.find(
+        (row) => row.id === state.current.currentId,
+      );
+      if (!item?.result) return;
+      const updated = await reviewProvider.saveFeedback(item.result.id, {
+        feedback_type: 'edit',
+        target_path: '/knowledge_excluded',
+        corrected_value: true,
+        comment: null,
+        error_category: null,
+        base_revision: item.result.humanRevision?.revision ?? 0,
+      });
+      saved(updated);
+    },
     beginReview: () =>
       update((current) => ({
         ...current,

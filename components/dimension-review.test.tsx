@@ -48,6 +48,52 @@ const result: AnalysisResult = {
   ],
 };
 
+it('edits and clears human style tags without overwriting AI tags', async () => {
+  const style = { ...dimension, code: 'style', label: '风格' };
+  const source = { ...result, dimensions: [style], tags: ['painterly'] };
+  const save = vi.fn().mockResolvedValue(source);
+  render(
+    <DimensionReview
+      result={source}
+      dimension={style}
+      save={save}
+      onSaved={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '修改' }));
+  fireEvent.change(screen.getByLabelText('修改风格标签'), {
+    target: { value: 'geometric, restrained' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '保存修订' }));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      source.id,
+      expect.objectContaining({
+        corrected_value: expect.objectContaining({
+          tags: ['geometric', 'restrained'],
+        }),
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '修改' })).not.toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '修改' }));
+  fireEvent.change(screen.getByLabelText('修改风格标签'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '保存修订' }));
+  await waitFor(() =>
+    expect(save).toHaveBeenLastCalledWith(
+      source.id,
+      expect.objectContaining({
+        corrected_value: expect.objectContaining({ tags: [] }),
+      }),
+    ),
+  );
+  expect(source.tags).toEqual(['painterly']);
+});
+
 it('renders resolved evidence and submits dimension edits without mutating original', async () => {
   const save = vi.fn().mockResolvedValue(result);
   const onSaved = vi.fn();

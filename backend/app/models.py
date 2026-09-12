@@ -145,6 +145,8 @@ class ReviewedDimension(BaseModel):
 class HumanRevision(BaseModel):
     revision: int
     dimensions: list[ReviewedDimension]
+    tags: list[str] | None = None
+    knowledge_excluded: bool = False
 
 
 class AnalysisResultView(AnalysisResult):

@@ -100,7 +100,7 @@ class KnowledgeAnswerService:
             if revision is None or revision.revision != hit.revision:
                 continue
             context.append({
-                "result_id": str(result.id), "summary": result.summary, "style_tags": result.tags,
+                "result_id": str(result.id), "summary": result.summary, "style_tags": revision.tags if revision.tags is not None else result.tags,
                 "dimension_interpretations": [{"code": d.code, "interpretation": d.interpretation}
                                               for d in revision.dimensions],
                 "computed_facts": [e.model_dump(mode="json") for e in resolve_evidence(result)

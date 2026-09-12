@@ -82,6 +82,24 @@ def test_only_confirmed_case_gets_embedding_and_reject_removes_it():
     assert repository.get_case_embedding(mock.id) is None
 
 
+def test_human_tags_reindex_and_case_exclusion_applies_to_all_searches():
+    repository = InMemoryRepository()
+    adapter = FakeEmbeddingAdapter()
+    semantic = SemanticSearchService(repository, adapter)
+    reviews = ReviewService(repository, semantic)
+    result = add_case(repository)
+    confirm(reviews, result)
+    reviews.save(result.id, FeedbackCreate(feedback_type="edit", target_path="/dimensions/style", base_revision=5,
+        corrected_value={"observation": "Human", "interpretation": "Human", "tags": ["human-tag"]}))
+    assert "Style tags: human-tag" in adapter.inputs[-1]
+    assert "restrained" not in adapter.inputs[-1]
+    assert HybridSearchService(repository, adapter).search(HybridSearchRequest(tags=["human-tag"]))[0].tags == ["human-tag"]
+    reviews.save(result.id, FeedbackCreate(feedback_type="edit", target_path="/knowledge_excluded", corrected_value=True, base_revision=6))
+    assert repository.get_case_embedding(result.id) is None
+    assert semantic.search(SemanticSearchRequest(query="cold")) == []
+    assert HybridSearchService(repository, adapter).search(HybridSearchRequest(query="cold")) == []
+
+
 def test_edited_human_interpretation_is_embedded_instead_of_raw_text():
     repository = InMemoryRepository()
     adapter = FakeEmbeddingAdapter()

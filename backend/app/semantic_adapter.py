@@ -54,6 +54,7 @@ class SemanticSettings:
     max_retries: int = 1
     retry_delay_seconds: float = 0.5
     max_completion_tokens: int = 3000
+    use_feature_evidence: bool = True
 
     @classmethod
     def from_env(cls):
@@ -66,6 +67,10 @@ class SemanticSettings:
             max_retries=int(os.getenv("AESTHETICLENS_MAX_RETRIES", "1")),
             retry_delay_seconds=float(os.getenv("AESTHETICLENS_RETRY_DELAY_SECONDS", "0.5")),
             max_completion_tokens=int(os.getenv("AESTHETICLENS_MAX_COMPLETION_TOKENS", "3000")),
+            use_feature_evidence=os.getenv(
+                "AESTHETICLENS_USE_FEATURE_EVIDENCE",
+                "true",
+            ).lower() == "true",
         )
 
 
@@ -177,31 +182,95 @@ def normalized_png(image: NormalizedImage) -> str:
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def validate_output(content: str, evidence: dict, profile: AnalysisProfile, vocabulary: dict):
+def validate_output(
+    content: str,
+    evidence: dict,
+    profile: AnalysisProfile,
+    vocabulary: dict,
+    require_feature_evidence: bool,
+):
     output = SemanticOutput.model_validate_json(content)
+
     expected = {d.code for d in profile.dimensions}
     codes = [d.code for d in output.dimensions]
+
     if len(codes) != len(expected) or set(codes) != expected:
         raise ValueError("INVALID_DIMENSIONS")
+
     allowed_tags = {t["code"] for t in vocabulary["tags"]}
-    if len(output.tags) != len(set(output.tags)) or not set(output.tags) <= allowed_tags:
+
+    if (
+        len(output.tags) != len(set(output.tags))
+        or not set(output.tags) <= allowed_tags
+    ):
         raise ValueError("INVALID_STYLE_TAGS")
+
     for dimension in output.dimensions:
-        if any(ref not in evidence for ref in dimension.evidence_refs):
+        # 如果模型引用了某条计算证据，这条证据必须真实存在
+        if any(
+            ref not in evidence
+            for ref in dimension.evidence_refs
+        ):
             raise ValueError("INVALID_FEATURE_REFERENCE")
-        if not dimension.evidence_refs and not dimension.uncertainty:
-            raise ValueError("MISSING_EVIDENCE_OR_UNCERTAINTY")
-        if dimension.uncertainty is not None and not dimension.uncertainty.strip():
+
+        if require_feature_evidence:
+            # 计算增强模式：
+            # 色彩和光影必须真正使用至少一条计算证据
+            if (
+                dimension.code in {"color", "lighting"}
+                and not dimension.evidence_refs
+            ):
+                raise ValueError(
+                    f"MISSING_REQUIRED_FEATURE_EVIDENCE:{dimension.code}"
+                )
+
+            # Visible image evidence may support a conclusion without a computed
+            # reference; uncertainty is reserved for material ambiguity.
+
+        else:
+            # zero-shot 模式完全不允许引用计算特征
+            if dimension.evidence_refs:
+                raise ValueError(
+                    "ZERO_SHOT_MUST_NOT_REFERENCE_FEATURES"
+                )
+
+        if (
+            dimension.uncertainty is not None
+            and not dimension.uncertainty.strip()
+        ):
             raise ValueError("EMPTY_UNCERTAINTY")
-        for text in (dimension.observation, dimension.interpretation, dimension.uncertainty or ""):
-            refs = re.findall(r"\{\{([^{}]+)\}\}", text)
-            if any(ref not in evidence or ref not in dimension.evidence_refs for ref in refs):
+
+        for text in (
+            dimension.observation,
+            dimension.interpretation,
+            dimension.uncertainty or "",
+        ):
+            refs = re.findall(
+                r"\{\{([^{}]+)\}\}",
+                text,
+            )
+
+            if any(
+                ref not in evidence
+                or ref not in dimension.evidence_refs
+                for ref in refs
+            ):
                 raise ValueError("INVALID_INLINE_REFERENCE")
-            plain = re.sub(r"\{\{[^{}]+\}\}", "", text)
+
+            plain = re.sub(
+                r"\{\{[^{}]+\}\}",
+                "",
+                text,
+            )
+
             if re.search(r"[0-9{}]", plain):
-                raise ValueError("UNSUPPORTED_INLINE_NUMBER")
+                raise ValueError(
+                    "UNSUPPORTED_INLINE_NUMBER"
+                )
+
     if re.search(r"[0-9{}]", output.summary):
         raise ValueError("UNSUPPORTED_SUMMARY_NUMBER")
+
     return output
 
 
@@ -236,21 +305,39 @@ class ChatCompletionsAdapter:
         except httpx.InvalidURL:
             fail("MODEL_CONFIGURATION_INVALID")
         try:
-            prompt = json.loads((CONFIG_DIR / "semantic_prompt.json").read_text(encoding="utf-8"))
+            prompt_file = (
+                "semantic_prompt.json"
+                if settings.use_feature_evidence
+                else "semantic_prompt_zero_shot.json"
+            )
+
+            prompt = json.loads(
+                (CONFIG_DIR / prompt_file).read_text(encoding="utf-8")
+            )
             vocabulary = json.loads((CONFIG_DIR / "style_vocabulary.json").read_text(encoding="utf-8"))
-            evidence = semantic_feature_evidence(feature_evidence(features))
+            boundary = json.loads((CONFIG_DIR / "semantic_reasoning_boundary.json").read_text(encoding="utf-8"))
+            all_evidence = semantic_feature_evidence(feature_evidence(features))
+
+            evidence = (
+                all_evidence
+                if settings.use_feature_evidence
+                else {}
+            )
             metadata.update(prompt_version=prompt["version"], vocabulary_version=vocabulary["version"])
+            metadata["reasoning_boundary_version"] = boundary["version"]
             payload = {
                 "model": settings.model, "max_completion_tokens": settings.max_completion_tokens,
                 "response_format": {"type": "json_object"},
                 "messages": [
-                    {"role": "system", "content": prompt["instructions"] + "\n" + prompt["numeric_policy"]},
+                    {"role": "system", "content": prompt["instructions"] + "\n" + prompt["numeric_policy"] + "\n以下推理边界优先适用：\n" + boundary["instructions"]},
                     {"role": "user", "content": [
                         {"type": "text", "text": json.dumps({
                             "dimensions": [d.model_dump() for d in profile.dimensions],
                             "schema": SemanticOutput.model_json_schema(),
                             "style_vocabulary": vocabulary,
-                            "feature_evidence": evidence,
+                            "feature_evidence": (
+                                evidence if settings.use_feature_evidence else {}
+                            ),
                             "normalization": semantic_numeric_payload(image.provenance),
                             "feature_versions": {f.extractor_code: f.extractor_version for f in features if f.status == "succeeded"},
                         }, ensure_ascii=False)},
@@ -280,7 +367,13 @@ class ChatCompletionsAdapter:
                     choice = body["choices"][0]
                     if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
                         raise ValueError("INCOMPLETE_OR_REFUSED_OUTPUT")
-                    output = validate_output(choice["message"]["content"], evidence, profile, vocabulary)
+                    output = validate_output(
+                        choice["message"]["content"],
+                        evidence,
+                        profile,
+                        vocabulary,
+                        settings.use_feature_evidence,
+                    )
                     labels = {d.code: d.label for d in profile.dimensions}
                     dimensions = [DimensionResult(
                         code=d.code, label=labels[d.code], observation=render_evidence(d.observation, evidence),

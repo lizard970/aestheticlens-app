@@ -51,4 +51,25 @@ it('renders model uncertainty from provenance', () => {
   } as unknown as AnalysisResult;
   render(<SemanticStatus result={result} />);
   expect(screen.getByText('不确定性 · 风格：风格证据不足')).toBeInTheDocument();
+  expect(screen.getByText('不确定性 · 风格：风格证据不足')).toHaveClass(
+    'text-muted-foreground',
+  );
+});
+
+it('highlights only explicitly marked material uncertainty', () => {
+  const result = {
+    provenance: {
+      mode: 'real',
+      semantic: {
+        status: 'succeeded',
+        uncertainty: {
+          lighting: '【高不确定性】投影方向冲突，主光方向可能相反',
+        },
+      },
+    },
+    warnings: [],
+    dimensions: [],
+  } as unknown as AnalysisResult;
+  render(<SemanticStatus result={result} />);
+  expect(screen.getByText(/不确定性 · lighting/)).toHaveClass('text-amber-200');
 });

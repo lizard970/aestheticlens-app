@@ -64,3 +64,15 @@ def test_restart_persistence_revision_history_and_structured_search():
         numeric_filters=[{"field": "value", "op": "gte", "value": .75}], limit=1,
     ))
     assert [hit.result_id for hit in hybrid_hits] == [result.id]
+    human_tag = f"human-{uuid4()}"
+    review.save(result.id, FeedbackCreate(feedback_type="edit", target_path="/dimensions/style", base_revision=5,
+        corrected_value={"observation": "Human", "interpretation": "Human", "tags": [human_tag]}))
+    again = PostgreSQLRepository(DATABASE_URL)
+    assert ReviewService(again).revision(result.id).tags == [human_tag]
+    assert StoredKnowledgeRepository(again).search(StructuredSearchRequest(tags=[human_tag]))[0].result_id == result.id
+    review.save(result.id, FeedbackCreate(feedback_type="edit", target_path="/knowledge_excluded", corrected_value=True, base_revision=6))
+    final = PostgreSQLRepository(DATABASE_URL)
+    assert ReviewService(final).revision(result.id).knowledge_excluded
+    assert StoredKnowledgeRepository(final).search(StructuredSearchRequest(tags=[human_tag])) == []
+    assert final.get_asset_bytes(asset.id) == b"fixture"
+    assert final.get_result(result.id).tags == [unique_tag]
