@@ -1,4 +1,3 @@
-<img width="2560" height="1308" alt="D49C72C38A81711DE9FC70E6C09D2E43" src="https://github.com/user-attachments/assets/8d7772ee-630b-4426-93dd-0d35901e0f43" /><img width="2560" height="1308" alt="3" src="https://github.com/user-attachments/assets/c17228db-71ed-4cad-9ff8-cb7a594f0ab4" /><img width="2560" height="1308" alt="1" src="https://github.com/user-attachments/assets/d32e806a-6caa-4312-98d5-718db3d51226" /># AestheticLens
 
 > **多模态视觉分析与知识检索平台**
 
