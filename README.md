@@ -28,6 +28,7 @@ AestheticLens 将图片中的**构图、色彩、光影、空间与风格**分�
 <img width="2560" height="1308" alt="b3c2b8ed9155a24638d40e4167a37b7f" src="https://github.com/user-attachments/assets/0e235938-3931-4ad5-9387-9472be8685ce" />
 <img width="2560" height="1304" alt="22" src="https://github.com/user-attachments/assets/e4db62bd-ad35-433c-b873-314ca332dfc2" />
 3. 检索 / 对比
+   
 实体约束：
 <img width="2560" height="1299" alt="8DCD7629A112BF42C17F26EAED3056AB" src="https://github.com/user-attachments/assets/9d36a5c7-6322-4b28-9993-50ba08e3eae4" />
 语义约束：
