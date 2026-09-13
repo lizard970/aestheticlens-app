@@ -1,7 +1,7 @@
 from uuid import UUID
 import os
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -15,6 +15,8 @@ from .services import MockAnalysisService
 from .feature_pipeline import ImageNormalizationError
 from .reviews import ReviewService
 from .knowledge import HybridSearchService, SemanticSearchService, StoredKnowledgeRepository
+from .knowledge_listing import list_knowledge
+from .thumbnails import thumbnail
 from .answers import AnswerError, AnswerRequest, ChatAnswerAdapter, KnowledgeAnswer, KnowledgeAnswerService
 from .collection_routes import collection_router
 from .evaluation import evaluation_router
@@ -166,6 +168,37 @@ def delete_knowledge_case(result_id: UUID):
         repository.delete_knowledge_case(result_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get('/api/v1/knowledge/cases')
+def knowledge_cases(cursor: str | None = Query(default=None, max_length=1024),
+                    tag: str = Query(default='', max_length=200),
+                    review_status: str = Query(default='', max_length=50),
+                    query: str = Query(default='', max_length=2000)):
+    try:
+        return list_knowledge(repository, cursor, tag, review_status, query)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get('/api/v1/assets/{asset_id}/thumbnail')
+def read_thumbnail(asset_id: UUID):
+    try:
+        body = thumbnail(repository, asset_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail='THUMBNAIL_UNAVAILABLE') from exc
+    return Response(body, media_type='image/webp', headers={
+        'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
+
+
+@app.get('/api/v1/assets/{asset_id}')
+def asset_metadata(asset_id: UUID) -> Asset:
+    asset = repository.get_asset(asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail='ASSET_NOT_FOUND')
+    return asset
 
 
 @app.get("/api/v1/assets/{asset_id}/content")

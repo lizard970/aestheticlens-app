@@ -9,6 +9,7 @@ from app.models import (AnalysisJob, AnalysisResult, AnalysisTarget, Asset, Dime
                         StructuredSearchRequest)
 from app.repositories import PostgreSQLRepository
 from app.reviews import ReviewService
+from app.knowledge_listing import list_knowledge
 
 
 DATABASE_URL = os.getenv("AESTHETICLENS_TEST_DATABASE_URL")
@@ -54,6 +55,9 @@ def test_restart_persistence_revision_history_and_structured_search():
         tags=[unique_tag], numeric_filters=[{"feature_ref": "feature:metric#/value", "op": "gte", "value": .75}],
     ))
     assert [hit.result_id for hit in hits] == [result.id]
+    # Fresh repository uses a bounded SQL keyset query and the same eligibility rules.
+    assert list_knowledge(restarted, tag=unique_tag)['items'][0]['result_id'] == result.id
+    assert restarted.result_page(None, 1)
     semantic_hits = SemanticSearchService(restarted, PersistentFakeEmbeddingAdapter()).search(
         SemanticSearchRequest(query="persistent", limit=1)
     )

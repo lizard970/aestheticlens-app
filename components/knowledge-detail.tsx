@@ -12,6 +12,7 @@ import { WorkspacePage } from './workspace-navigation';
 import { KnowledgeEvidence } from './knowledge-page';
 import { Button } from './ui/button';
 import { DeleteKnowledgeCase } from './delete-knowledge-case';
+import { knowledgeListCache } from '@/lib/knowledge-list-cache';
 
 export function KnowledgeDetail({ id }: { id: string }) {
   const [result, setResult] = useState<AnalysisResult>();
@@ -26,20 +27,21 @@ export function KnowledgeDetail({ id }: { id: string }) {
     let active = true;
     void new ApiAnalysisProvider()
       .getResult(id)
-      .then((data) => {
-        if (active) setResult(data);
+      .then(async (data) => {
+        if (!active) return;
+        setResult(data);
+        setError('');
+        const cached = knowledgeListCache.getSnapshot().items.find(item => item.result_id === id);
+        if (cached) setMeta(cached);
+        else if (data.assetId) {
+          try {
+            const asset = await jsonRequest<{ id: string; original_filename: string }>(`${API_BASE_URL}/assets/${data.assetId}`);
+            if (active) setMeta({ asset_id: asset.id, original_filename: asset.original_filename });
+          } catch { /* Optional metadata; never load the full analysis history. */ }
+        }
       })
       .catch(() => {
         if (active) setError('案例读取失败或不存在，请重试。');
-      });
-    void jsonRequest<{
-      items: Array<{ id: string; asset_id: string; original_filename: string }>;
-    }>(`${API_BASE_URL}/analysis-results`)
-      .then((data) => {
-        if (active) setMeta(data.items.find((item) => item.id === id));
-      })
-      .catch(() => {
-        /* Optional file metadata is explicitly absent below. */
       });
     return () => {
       active = false;
@@ -47,7 +49,7 @@ export function KnowledgeDetail({ id }: { id: string }) {
   }, [id, attempt]);
   return (
     <WorkspacePage active="/knowledge">
-      <Link href="/knowledge" className="underline">
+      <Link href="/knowledge" scroll={false} className="underline">
         返回视觉知识库
       </Link>
       <h1 className="text-2xl font-semibold">案例详情</h1>
@@ -67,7 +69,7 @@ export function KnowledgeDetail({ id }: { id: string }) {
       {!deleted && !result && !error && <output>正在读取案例…</output>}
       {!deleted && result && (
         <>
-          <DeleteKnowledgeCase id={id} name={meta?.original_filename ?? id} onDeleted={() => setDeleted(true)} />
+          <DeleteKnowledgeCase id={id} name={meta?.original_filename ?? id} onDeleted={() => { knowledgeListCache.remove(id); setDeleted(true); }} />
           <Link
             href={`/?result_id=${encodeURIComponent(id)}`}
             className="underline"

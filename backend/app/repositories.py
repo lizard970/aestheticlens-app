@@ -1,6 +1,7 @@
 import json
 import math
 import os
+from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from typing import Protocol
@@ -8,14 +9,18 @@ from uuid import UUID
 
 from .embeddings import EMBEDDING_DIMENSIONS
 from .evidence import resolve_evidence
-from .models import AnalysisJob, AnalysisResult, Asset, Feedback, StoredCaseEmbedding
+from .models import AnalysisJob, AnalysisResult, Asset, Feedback, StoredCaseEmbedding, utc_now
 from .collection_storage import MemoryCollectionStorage, PostgreSQLCollectionStorage
 from .collection_models import AssetCollection, CollectionItem
 from .evaluation import EvaluationCase, EvaluationRun, EvaluationFeedback
 from .evaluation_storage import MemoryEvaluationStorage, PostgreSQLEvaluationStorage
 
 
+ResultPageRecord = tuple[datetime, AnalysisResult, AnalysisJob, Asset, list[Feedback]]
+
+
 class Repository(Protocol):
+    def result_page(self, after: tuple[datetime, UUID] | None, limit: int) -> list[ResultPageRecord]: ...
     def delete_knowledge_case(self, result_id: UUID) -> None: ...
     def save_evaluation_case(self, case: EvaluationCase) -> None: ...
     def get_evaluation_case(self, case_id: UUID) -> EvaluationCase | None: ...
@@ -53,6 +58,7 @@ class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
         self.assets: dict[UUID, Asset] = {}
         self.jobs: dict[UUID, AnalysisJob] = {}
         self.results: dict[UUID, AnalysisResult] = {}
+        self.result_created_at: dict[UUID, datetime] = {}
         self.feedback: dict[UUID, list[Feedback]] = {}
         self.asset_bytes: dict[UUID, bytes] = {}
         self.case_embeddings: dict[UUID, StoredCaseEmbedding] = {}
@@ -89,6 +95,7 @@ class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
         return job.model_copy(deep=True) if job else None
 
     def save_result(self, result: AnalysisResult) -> None:
+        self.result_created_at.setdefault(result.id, utc_now())
         self.results[result.job_id] = result.model_copy(deep=True)
 
     def get_result(self, result_id: UUID) -> AnalysisResult | None:
@@ -101,6 +108,20 @@ class InMemoryRepository(MemoryCollectionStorage, MemoryEvaluationStorage):
 
     def list_results(self) -> list[AnalysisResult]:
         return [item.model_copy(deep=True) for item in self.results.values()]
+
+    def result_page(self, after: tuple[datetime, UUID] | None, limit: int) -> list[ResultPageRecord]:
+        rows = sorted((self.result_created_at[r.id], r.id, r) for r in self.results.values())
+        page = []
+        for created, result_id, result in rows:
+            if after is not None and (created, result_id) <= after:
+                continue
+            job = self.get_job(result.job_id)
+            asset = self.get_asset(job.target.id) if job else None
+            if job and asset:
+                page.append((created, result.model_copy(deep=True), job, asset, self.read_feedback(result.id)))
+            if len(page) == limit:
+                break
+        return page
 
     def delete_knowledge_case(self, result_id: UUID) -> None:
         with self._review_lock:
@@ -270,6 +291,25 @@ class PostgreSQLRepository(PostgreSQLCollectionStorage, PostgreSQLEvaluationStor
         with self._connect() as connection:
             rows = connection.execute("SELECT id, data FROM analysis_results ORDER BY created_at, id").fetchall()
         return [self._result_from_row(row) for row in rows]
+
+    def result_page(self, after: tuple[datetime, UUID] | None, limit: int) -> list[ResultPageRecord]:
+        # Keyset scan using the existing creation order. One bounded query loads the
+        # data needed by the unchanged eligibility/revision services, not N connections.
+        condition = "WHERE (r.created_at, r.id) > (%s, %s)" if after else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT r.created_at, r.data, j.data, a.data, "
+                "COALESCE((SELECT jsonb_agg(f.data ORDER BY f.position) FROM feature_results f WHERE f.result_id=r.id), '[]'::jsonb), "
+                "COALESCE((SELECT jsonb_agg(h.data ORDER BY h.revision) FROM feedback h WHERE h.result_id=r.id), '[]'::jsonb) "
+                "FROM (SELECT * FROM analysis_results r " + condition + " ORDER BY r.created_at, r.id LIMIT %s) r "
+                "JOIN analysis_jobs j ON j.id=r.job_id JOIN assets a ON a.id=j.asset_id "
+                "ORDER BY r.created_at, r.id",
+                (*after, limit) if after else (limit,),
+            ).fetchall()
+        return [(created, AnalysisResult.model_validate({**data, 'features': features}),
+                 AnalysisJob.model_validate(job), Asset.model_validate(asset),
+                 [Feedback.model_validate(item) for item in history])
+                for created, data, job, asset, features, history in rows]
 
     def delete_knowledge_case(self, result_id: UUID) -> None:
         """Remove analysis records only. The asset row and image bytes intentionally remain."""

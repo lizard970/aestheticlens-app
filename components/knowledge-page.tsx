@@ -1,18 +1,15 @@
 'use client';
 /* eslint-disable @next/next/no-img-element -- Existing backend serves original image previews. */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { DeleteKnowledgeCase } from './delete-knowledge-case';
 import { CompareButton } from './case-compare';
 import { WorkspacePage } from './workspace-navigation';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import {
-  caseStatus,
-  lastReview,
-  loadKnowledge,
-  type CaseView,
-} from '@/lib/knowledge-api';
+import { caseStatus } from '@/lib/knowledge-api';
+import { knowledgeListCache } from '@/lib/knowledge-list-cache';
+import { DeferredKnowledgeCard } from './deferred-knowledge-card';
 import type { AnalysisResult } from '@/lib/aesthetic-domain';
 
 export function KnowledgeEvidence({
@@ -88,108 +85,91 @@ export function KnowledgeEvidence({
 }
 
 export function KnowledgePage() {
-  const [cases, setCases] = useState<CaseView[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [tag, setTag] = useState('');
-  const [status, setStatus] = useState('');
-  const [query, setQuery] = useState('');
-  const sequence = useRef(0);
-  async function refresh() {
-    const version = ++sequence.current;
-    setLoading(true);
-    setError('');
-    try {
-      const data = await loadKnowledge();
-      if (version === sequence.current) setCases(data);
-    } catch (reason) {
-      if (version === sequence.current)
-        setError(reason instanceof Error ? reason.message : '加载失败');
-    } finally {
-      if (version === sequence.current) setLoading(false);
-    }
-  }
+  const snapshot = useSyncExternalStore(
+    knowledgeListCache.subscribe,
+    knowledgeListCache.getSnapshot,
+    knowledgeListCache.getServerSnapshot,
+  );
+  const [tag, setTag] = useState(snapshot.filters.tag);
+  const [status, setStatus] = useState(snapshot.filters.review_status);
+  const [query, setQuery] = useState(snapshot.filters.query);
   useEffect(() => {
-    let active = true;
-    void loadKnowledge().then(data => { if (active) setCases(data); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '加载失败'); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    if (!knowledgeListCache.getSnapshot().loaded)
+      void knowledgeListCache.load();
+    const savedScroll = knowledgeListCache.getScroll();
+    const frame = requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+    const saveScroll = () => knowledgeListCache.saveScroll(window.scrollY);
+    window.addEventListener('scroll', saveScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', saveScroll);
+    };
   }, []);
-  const tags = [...new Set(cases.flatMap((c) => c.entry.tags))].sort();
-  const confirmedTags = new Set(
-    cases.flatMap((c) => c.result?.humanRevision?.tags ?? []),
-  );
-  const hasTagRevisions = cases.some(
-    (c) => c.result?.humanRevision?.tags != null,
-  );
-  const times = cases
-    .map((c) => lastReview(c.result))
-    .filter((n): n is number => n !== null);
-  const filtered = cases.filter(
-    (c) =>
-      (!tag || c.entry.tags.includes(tag)) &&
-      (!status || caseStatus(c.result) === status) &&
-      `${c.entry.original_filename} ${c.entry.asset_id} ${c.entry.result_id} ${c.entry.tags.join(' ')} ${c.result?.summary ?? ''} ${c.result?.humanRevision?.dimensions.map((d) => d.interpretation).join(' ') ?? ''}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  const tags = [...new Set(snapshot.items.flatMap((item) => item.tags))].sort();
+  const times = snapshot.items
+    .map((item) => Date.parse(item.updated_at ?? ''))
+    .filter(Number.isFinite);
   return (
     <WorkspacePage active="/knowledge">
       <h1 className="text-2xl font-semibold">视觉知识库</h1>
       <p className="text-sm text-muted-foreground">
         AI 提出分析 → 人工校准 →
-        形成知识资产。仅展示后端判定已确认、真实且证据有效的案例。
+        形成知识资产。仅展示已确认、真实且证据有效的案例。
       </p>
       <div className="flex flex-wrap gap-6 rounded-xl border border-white/10 p-4">
-        <p>已收录案例数量：{loading ? '读取中' : cases.length}</p>
         <p>
-          已确认标签数量：{hasTagRevisions ? confirmedTags.size : '—'}{' '}
-          <span className="text-sm text-muted-foreground">
-            {hasTagRevisions
-              ? '按当前人工版本统计'
-              : `无独立标签确认字段；已审核案例关联标签 ${tags.length} 种`}
-          </span>
+          已加载案例：{snapshot.items.length}
+          {snapshot.next_cursor ? '（还有更多）' : ''}
         </p>
+        <p>已加载案例确认标签：{tags.length}</p>
         <p>
-          最近更新时间：
+          最近更新时间（已加载）：
           {times.length
             ? new Date(Math.max(...times)).toLocaleString()
             : '暂无时间数据'}
-          <span className="block text-xs text-muted-foreground">
-            按已加载反馈时间计算
-          </span>
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void knowledgeListCache.load(true, {
+            tag,
+            review_status: status,
+            query,
+          });
+        }}
+      >
         <Input
           aria-label="搜索案例"
           placeholder="搜索案例、文件名或分析内容"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           className="max-w-sm"
         />
-        <label>
-          标签{' '}
-          <select
+        <label htmlFor="knowledge-tag">
+          标签
+          <Input
+            id="knowledge-tag"
             aria-label="按标签筛选"
-            className="rounded border bg-background p-2"
+            list="knowledge-tags"
             value={tag}
-            onChange={(e) => setTag(e.target.value)}
-          >
-            <option value="">全部</option>
-            {tags.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
+            onChange={(event) => setTag(event.target.value)}
+          />
         </label>
-        <label>
-          审核状态{' '}
+        <datalist id="knowledge-tags">
+          {tags.map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </datalist>
+        <label htmlFor="knowledge-status">
+          审核状态
           <select
+            id="knowledge-status"
             aria-label="按审核状态筛选"
             className="rounded border bg-background p-2"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(event) => setStatus(event.target.value)}
           >
             <option value="">全部</option>
             {[
@@ -198,72 +178,92 @@ export function KnowledgePage() {
               '审核中',
               '需重新审核',
               '暂无人工审核记录',
-            ].map((s) => (
-              <option key={s}>{s}</option>
+            ].map((value) => (
+              <option key={value}>{value}</option>
             ))}
           </select>
         </label>
+        <Button type="submit" disabled={snapshot.loading}>
+          筛选
+        </Button>
         <Button
+          type="button"
           variant="outline"
-          disabled={loading}
-          onClick={() => void refresh()}
+          disabled={snapshot.loading}
+          onClick={() => void knowledgeListCache.load(true)}
         >
           刷新
         </Button>
-      </div>
-      {error && (
-        <p role="alert">读取失败：{error}。已有内容可能已过期，请重试。</p>
+      </form>
+      {snapshot.error && (
+        <p role="alert">读取失败：{snapshot.error}。已加载内容保留，请重试。</p>
       )}
-      {loading ? (
-        <output>正在读取知识资产…</output>
-      ) : (
-        filtered.length === 0 && (
+      {snapshot.loading && <output>正在读取知识资产…</output>}
+      {!snapshot.loading &&
+        !snapshot.error &&
+        snapshot.loaded &&
+        !snapshot.items.length && (
           <p>暂无符合条件的知识案例。完成真实分析的五维审核后再刷新。</p>
-        )
-      )}
-      {!loading &&
-        filtered.map(({ entry, result, error: detailError }) => (
-          <article
-            key={entry.result_id}
-            className="rounded-xl border border-white/10 bg-card p-4"
-          >
-            <div className="mb-4 flex flex-wrap gap-4">
+        )}
+      <div className="columns-1 gap-4 md:columns-2 xl:columns-3">
+        {snapshot.items.map((entry) => (
+          <DeferredKnowledgeCard key={entry.result_id} id={entry.result_id}>
+            <article className="rounded-xl border border-white/10 bg-card p-4">
               <Link
-                aria-label={`预览 ${entry.original_filename}`}
-                href={`/knowledge/${entry.result_id}`}
+                aria-label={'预览 ' + entry.original_filename}
+                href={'/knowledge/' + entry.result_id}
               >
                 <img
                   src={entry.preview_url}
                   alt={entry.original_filename}
-                  className="h-36 w-48 object-contain"
+                  loading="lazy"
+                  decoding="async"
+                  className="mb-3 aspect-[4/3] w-full rounded-lg object-contain"
                 />
               </Link>
-              <div className="min-w-0 break-all">
-                <Link
-                  className="font-semibold underline"
-                  href={`/knowledge/${entry.result_id}`}
-                >
-                  {entry.original_filename}
-                </Link>
-                <p className="text-sm">asset_id：{entry.asset_id}</p>
-                <p className="text-sm">result_id：{entry.result_id}</p>
-                <p className="text-sm">
-                  {entry.tags.length
-                    ? `已审核案例关联标签：${entry.tags.join(' · ')}`
-                    : '暂无标签'}
-                </p>
+              <Link
+                className="block truncate font-semibold underline"
+                href={'/knowledge/' + entry.result_id}
+              >
+                {entry.original_filename}
+              </Link>
+              <p className="break-all text-xs text-muted-foreground">
+                asset_id：{entry.asset_id}
+              </p>
+              <p className="break-all text-xs text-muted-foreground">
+                result_id：{entry.result_id}
+              </p>
+              <p className="mt-2 text-sm">
+                {entry.review_status ?? '暂无人工审核记录'}
+              </p>
+              <p className="line-clamp-2 text-sm">
+                人工确认标签：{entry.tags.join(' · ') || '无风格标签'}
+              </p>
+              <p className="my-2 line-clamp-3 text-sm">{entry.preview_text}</p>
+              <p className="mb-2 text-xs text-muted-foreground">
+                点击案例查看完整五维与审核历史
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <CompareButton item={entry} />
+                <DeleteKnowledgeCase
+                  id={entry.result_id}
+                  name={entry.original_filename}
+                  onDeleted={() => knowledgeListCache.remove(entry.result_id)}
+                />
               </div>
-            </div>
-            {detailError && <p role="alert">{detailError}</p>}
-            <CompareButton item={entry} />
-            <DeleteKnowledgeCase id={entry.result_id} name={entry.original_filename} onDeleted={() => {
-              sequence.current++;
-              setLoading(false);
-              setCases(current => current.filter(item => item.entry.result_id !== entry.result_id));
-            }} />
-            <KnowledgeEvidence result={result} />
-          </article>
+            </article>
+          </DeferredKnowledgeCard>
         ))}
+      </div>
+      {snapshot.next_cursor && (
+        <Button
+          variant="outline"
+          disabled={snapshot.loading}
+          onClick={() => void knowledgeListCache.load()}
+        >
+          加载更多（20 条）
+        </Button>
+      )}
     </WorkspacePage>
   );
 }

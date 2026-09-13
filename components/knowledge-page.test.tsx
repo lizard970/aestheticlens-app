@@ -3,11 +3,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { KnowledgePage, KnowledgeEvidence } from './knowledge-page';
 import { SearchPage } from './search-page';
 import type { CaseView } from '@/lib/knowledge-api';
+import { knowledgeListCache } from '@/lib/knowledge-list-cache';
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), search: vi.fn() }));
 vi.mock('@/lib/knowledge-api', async (original) => ({
   ...(await original<object>()),
-  loadKnowledge: mocks.load,
+  loadKnowledgePage: mocks.load,
   searchCases: mocks.search,
 }));
 const example: CaseView = {
@@ -19,6 +20,7 @@ const example: CaseView = {
     tags: ['cinematic'],
     revision: 1,
     preview_text: '人工解释',
+    review_status: '已人工修改',
   },
   result: {
     id: 'result1',
@@ -72,40 +74,52 @@ const example: CaseView = {
 beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
-  mocks.load.mockResolvedValue([example]);
+  knowledgeListCache.reset();
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  mocks.load.mockResolvedValue({ items: [example.entry], next_cursor: null });
   mocks.search.mockResolvedValue([example.entry]);
 });
 
-it('shows real review differences, case link, filters and honest missing tag fields', async () => {
+it('loads metadata only and sends filters to the server rather than filtering a preloaded library', async () => {
   render(<KnowledgePage />);
   await screen.findByRole('link', { name: 'cinema.png' });
   expect(screen.getByRole('link', { name: 'cinema.png' })).toHaveAttribute(
     'href',
     '/knowledge/result1',
   );
-  expect(screen.getByText('AI 分析：AI解释')).toBeInTheDocument();
-  expect(screen.getByText('人工校准：人工解释')).toBeInTheDocument();
-  expect(screen.getByText('备注：校准备注')).toBeInTheDocument();
-  expect(screen.getByText(/未提供独立的逐标签审核字段/)).toBeInTheDocument();
+  expect(screen.queryByText('AI 分析：AI解释')).not.toBeInTheDocument();
+  expect(screen.queryByText('备注：校准备注')).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'cinema.png' })).toHaveAttribute('loading', 'lazy');
+  mocks.load.mockResolvedValueOnce({ items: [], next_cursor: null });
   fireEvent.change(screen.getByLabelText('按审核状态筛选'), {
     target: { value: '已确认' },
-  });
-  expect(
-    screen.queryByRole('link', { name: 'cinema.png' }),
-  ).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('按审核状态筛选'), {
-    target: { value: '已人工修改' },
   });
   fireEvent.change(screen.getByLabelText('按标签筛选'), {
     target: { value: 'cinematic' },
   });
-  expect(screen.getByRole('link', { name: 'cinema.png' })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('搜索案例'), {
     target: { value: 'no match' },
   });
-  expect(
-    screen.queryByRole('link', { name: 'cinema.png' }),
-  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '筛选' }));
+  await waitFor(() => expect(screen.queryByRole('link', { name: 'cinema.png' })).not.toBeInTheDocument());
+  expect(mocks.load).toHaveBeenLastCalledWith({ tag: 'cinematic', review_status: '已确认', query: 'no match' }, null);
+});
+
+it('keeps appended pages and scroll position on return without reloading', async () => {
+  mocks.load.mockResolvedValueOnce({ items: [example.entry], next_cursor: 'cursor-1' });
+  const first = render(<KnowledgePage />);
+  await screen.findByRole('link', { name: 'cinema.png' });
+  mocks.load.mockResolvedValueOnce({ items: [{ ...example.entry, result_id: 'result2', original_filename: 'second.png' }], next_cursor: null });
+  fireEvent.click(screen.getByRole('button', { name: '加载更多（20 条）' }));
+  await screen.findByRole('link', { name: 'second.png' });
+  expect(mocks.load).toHaveBeenLastCalledWith({ tag: '', review_status: '', query: '' }, 'cursor-1');
+  knowledgeListCache.saveScroll(840);
+  first.unmount();
+  render(<KnowledgePage />);
+  expect(screen.getByRole('link', { name: 'cinema.png' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'second.png' })).toBeInTheDocument();
+  await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 840));
+  expect(mocks.load).toHaveBeenCalledTimes(2);
 });
 
 it('shows missing review data and allows load failures to retry', async () => {

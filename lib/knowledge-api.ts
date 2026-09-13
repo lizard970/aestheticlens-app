@@ -1,6 +1,5 @@
 import {
   API_BASE_URL,
-  ApiAnalysisProvider,
   jsonRequest,
 } from './api-analysis-provider';
 import type { AnalysisResult } from './aesthetic-domain';
@@ -13,6 +12,8 @@ export interface KnowledgeCase {
   tags: string[];
   revision: number;
   preview_text: string;
+  review_status?: string;
+  updated_at?: string | null;
   similarity?: number | null;
   matched_structured_conditions?: {
     tags: string[];
@@ -24,7 +25,6 @@ export interface CaseView {
   result?: AnalysisResult;
   error?: string;
 }
-const provider = new ApiAnalysisProvider();
 
 export async function searchCases(
   mode: 'structured' | 'semantic' | 'hybrid',
@@ -46,27 +46,13 @@ export async function searchCases(
   }));
 }
 
-export async function loadKnowledge(): Promise<CaseView[]> {
-  const entries = await searchCases('structured', {
-    tags: [],
-    numeric_filters: [],
-  });
-  const cases: CaseView[] = [];
-  // Bound concurrent detail requests while preserving server order.
-  for (let start = 0; start < entries.length; start += 6) {
-    cases.push(
-      ...(await Promise.all(
-        entries.slice(start, start + 6).map(async (entry) => {
-          try {
-            return { entry, result: await provider.getResult(entry.result_id) };
-          } catch {
-            return { entry, error: '详情读取失败，请刷新重试' };
-          }
-        }),
-      )),
-    );
-  }
-  return cases;
+export interface KnowledgeFilters { tag: string; review_status: string; query: string }
+export interface KnowledgePageData { items: KnowledgeCase[]; next_cursor: string | null }
+export async function loadKnowledgePage(filters: KnowledgeFilters, cursor: string | null = null): Promise<KnowledgePageData> {
+  const params = new URLSearchParams({ ...filters });
+  if (cursor) params.set('cursor', cursor);
+  const data = await jsonRequest<KnowledgePageData>(`${API_BASE_URL}/knowledge/cases?${params}`);
+  return { ...data, items: data.items.map(item => ({ ...item, preview_url: new URL(item.preview_url, API_BASE_URL).href })) };
 }
 
 export async function deleteKnowledgeCase(resultId: string) {
