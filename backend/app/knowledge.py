@@ -10,6 +10,7 @@ from .models import (AnalysisResult, HumanRevision, HybridSearchCase, HybridSear
                      SemanticSearchRequest, StoredCaseEmbedding, StructuredSearchRequest)
 from .repositories import Repository
 from .reviews import ReviewService
+from .query_understanding import reviewed_entities, understand
 from .semantic_adapter import feature_evidence
 
 
@@ -120,6 +121,8 @@ class SemanticSearchService:
         vector = self.adapter.embed(query.query)
         matches = []
         for stored, similarity in self.repository.search_case_embeddings(vector, query.limit):
+            if not math.isfinite(similarity) or similarity < query.min_similarity:
+                continue
             result = self.repository.get_result(stored.result_id)
             if result is None:
                 continue
@@ -144,11 +147,15 @@ class HybridSearchService:
         self.repository = repository
         self.adapter = adapter
 
-    def search(self, query: HybridSearchRequest) -> list[HybridSearchCase]:
+    def search(self, query: HybridSearchRequest, debug: dict | None = None) -> list[HybridSearchCase]:
         candidates = {}
+        entity_evidence = {}
         for result in self.repository.list_results():
             revision = searchable_revision(self.repository, result)
-            if revision is None or not set(query.tags).issubset(revision.tags if revision.tags is not None else result.tags):
+            if revision is None:
+                continue
+            entity_evidence[result.id] = reviewed_entities(result, revision)
+            if not set(query.tags).issubset(revision.tags if revision.tags is not None else result.tags):
                 continue
             if not passes_numeric_filters(result, query.numeric_filters):
                 continue
@@ -157,22 +164,30 @@ class HybridSearchService:
             if asset is not None:
                 candidates[result.id] = (result, revision, asset)
 
-        if query.query is not None:
+        plan = understand(query.query, set().union(*entity_evidence.values()) if entity_evidence else set())
+        candidates = {key: value for key, value in candidates.items()
+                      if set(plan["entities"]).issubset(entity_evidence[key])}
+        if debug is not None:
+            debug.update(plan, min_similarity=query.min_similarity, limit=query.limit,
+                         tags=query.tags, numeric_filters=[f.model_dump() for f in query.numeric_filters])
+        if plan["ranking_query"] is not None:
             if self.adapter is None:
                 raise EmbeddingError("SEMANTIC_SEARCH_NOT_CONFIGURED")
             if not candidates:
                 return []
             ranked = self.repository.search_case_embeddings(
-                self.adapter.embed(query.query), query.limit, list(candidates)
+                self.adapter.embed(plan["ranking_query"]), query.limit, list(candidates)
             )
             ordered = [(stored.result_id, similarity, stored.revision) for stored, similarity in ranked]
         else:
             ordered = [(result_id, None, candidates[result_id][1].revision)
                        for result_id in list(candidates)[:query.limit]]
 
-        conditions = MatchedStructuredConditions(tags=query.tags, numeric_filters=query.numeric_filters)
+        conditions = MatchedStructuredConditions(tags=query.tags, numeric_filters=query.numeric_filters, entities=plan["entities"])
         matches = []
         for result_id, similarity, stored_revision in ordered:
+            if similarity is not None and (not math.isfinite(similarity) or similarity < query.min_similarity):
+                continue
             candidate = candidates.get(result_id)
             if candidate is None:
                 continue

@@ -1,13 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { Aperture, BookOpenText, Search, Sparkles } from 'lucide-react';
+import { Aperture, BookOpenText, Search } from 'lucide-react';
+import { CompareProvider } from './case-compare';
 
 export function WorkspaceNavigation({ active }: { active: string }) {
   const items = [
     { label: '素材分析', href: '/', icon: Aperture },
     { label: '视觉知识库', href: '/knowledge', icon: BookOpenText },
     { label: '对比与检索', href: '/search', icon: Search },
-    { label: '审美档案', href: '/profile', icon: Sparkles },
   ];
   return (
     <aside className="border-b border-white/10 p-3 lg:border-r">
@@ -51,7 +51,7 @@ export function WorkspacePage({
       </header>
       <div className="mx-auto grid max-w-[1800px] lg:grid-cols-[180px_minmax(0,1fr)]">
         <WorkspaceNavigation active={active} />
-        <section className="min-w-0 space-y-4 p-5">{children}</section>
+        <CompareProvider><section className="min-w-0 space-y-4 p-5 pb-28">{children}</section></CompareProvider>
       </div>
     </main>
   );

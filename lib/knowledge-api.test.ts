@@ -14,3 +14,15 @@ it('uses existing search URLs, preserves conditions and resolves preview URLs', 
     await expect(searchCases('semantic', { query: 'test', limit: 10 })).rejects.toThrow('SEMANTIC_SEARCH_NOT_CONFIGURED');
   } finally { vi.unstubAllGlobals(); }
 });
+
+it('returns retrieval debug information even for an empty result without loading thumbnails', async () => {
+  const applied = { entities: ['cat'], reasons: ['reviewed evidence'], min_similarity: 0.5 };
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], applied_filters: applied }) });
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const debug = vi.fn();
+    expect(await searchCases('hybrid', { query: 'cinematic cat', min_similarity: 0.5 }, debug)).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(applied);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally { vi.unstubAllGlobals(); }
+});

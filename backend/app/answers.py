@@ -90,7 +90,7 @@ class KnowledgeAnswerService:
         self.min_similarity = min_similarity
 
     def answer(self, request: AnswerRequest) -> KnowledgeAnswer:
-        hits = self.retrieval.search(HybridSearchRequest(query=request.question, limit=request.limit))
+        hits = self.retrieval.search(HybridSearchRequest(query=request.question, limit=request.limit, min_similarity=self.min_similarity))
         context, retained = [], []
         for hit in hits:
             if hit.similarity is None or not math.isfinite(hit.similarity) or hit.similarity < self.min_similarity:

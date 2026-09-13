@@ -72,6 +72,13 @@ def test_unknown_citation_fails_closed():
     assert service.answer(AnswerRequest(question="cold")).status == "insufficient_evidence"
 
 
+def test_existing_answer_threshold_is_forwarded_to_retrieval():
+    repo, reviews, adapter, service = setup()
+    confirm(reviews, add_case(repo, interpretation="warm"))
+    service.min_similarity = 0
+    assert service.answer(AnswerRequest(question="cold")).status == "answered"
+
+
 def test_endpoint_and_configured_llm_contract(monkeypatch):
     repo, reviews, _, service = setup()
     case = add_case(repo)

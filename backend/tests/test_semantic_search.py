@@ -157,7 +157,7 @@ def test_hybrid_endpoint_supports_semantic_only(monkeypatch):
     assert response.status_code == 200
     assert response.json()["items"][0]["result_id"] == str(cold.id)
     assert response.json()["items"][0]["matched_structured_conditions"] == {
-        "tags": [], "numeric_filters": [],
+        "tags": [], "numeric_filters": [], "entities": [],
     }
 
 
@@ -176,7 +176,7 @@ def test_hybrid_structured_only_uses_hard_and_filters_without_embedding_query(mo
     matches = hybrid.search(request)
     assert [item.result_id for item in matches] == [match.id]
     assert matches[0].similarity is None
-    assert matches[0].matched_structured_conditions.model_dump() == request.model_dump(exclude={"query", "limit"})
+    assert matches[0].matched_structured_conditions.model_dump() == {**request.model_dump(exclude={"query", "limit", "min_similarity"}), "entities": []}
     monkeypatch.setattr(main, "hybrid_search_service", hybrid)
     response = TestClient(main.app).post("/api/v1/search/hybrid", json=request.model_dump())
     assert response.status_code == 200
@@ -197,7 +197,7 @@ def test_hybrid_filters_before_semantic_ranking_and_excludes_invalid_candidates(
     hybrid = HybridSearchService(repository, adapter)
     request = HybridSearchRequest(
         query="偏冷", tags=["cinematic"],
-        numeric_filters=[{"field": "shadow_occupancy", "op": "gte", "value": .4}], limit=10,
+        numeric_filters=[{"field": "shadow_occupancy", "op": "gte", "value": .4}], limit=10, min_similarity=0,
     )
     matches = hybrid.search(request)
     assert [item.result_id for item in matches] == [eligible_but_distant.id]

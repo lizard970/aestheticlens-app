@@ -70,6 +70,7 @@ const example: CaseView = {
   },
 };
 beforeEach(() => {
+  sessionStorage.clear();
   vi.clearAllMocks();
   mocks.load.mockResolvedValue([example]);
   mocks.search.mockResolvedValue([example.entry]);
@@ -130,19 +131,19 @@ it('does not invent human review when fields are absent', () => {
   expect(screen.queryByText('人工校准：人工解释')).not.toBeInTheDocument();
 });
 
-it('loads structured cases, sends hybrid conditions and shows provider errors', async () => {
+it('does not preload images, sends filters after search and shows provider errors', async () => {
   render(<SearchPage />);
+  expect(mocks.search).not.toHaveBeenCalled();
+  expect(mocks.load).not.toHaveBeenCalled();
+  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('检索方式')).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '审美档案' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '检索' }));
   await screen.findByRole('link', { name: 'cinema.png' });
   expect(
     screen.getByRole('img', { name: 'cinema.png 缩略图' }),
   ).toHaveAttribute('src', '/image');
-  expect(mocks.search).toHaveBeenCalledWith('structured', {
-    tags: [],
-    numeric_filters: [],
-  });
-  fireEvent.change(screen.getByLabelText('检索方式'), {
-    target: { value: 'hybrid' },
-  });
+  fireEvent.click(screen.getByText('高级筛选'));
   fireEvent.change(screen.getByLabelText('查询'), {
     target: { value: '冷静' },
   });
@@ -162,10 +163,27 @@ it('loads structured cases, sends hybrid conditions and shows provider errors', 
       query: '冷静',
       tags: ['cinematic'],
       numeric_filters: [{ field: 'shadow_occupancy', op: 'gte', value: 0.4 }],
-      limit: 20,
-    }),
+      limit: 50,
+      min_similarity: 0.3,
+    }, expect.any(Function)),
   );
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'SEMANTIC_SEARCH_NOT_CONFIGURED',
   );
+});
+
+it('paginates returned thumbnails without another whole-library request and shows zero results', async () => {
+  mocks.search.mockResolvedValueOnce(Array.from({ length: 15 }, (_, i) => ({ ...example.entry, result_id: `r${i}`, original_filename: `case${i}.png` })));
+  render(<SearchPage />);
+  fireEvent.click(screen.getByRole('button', { name: '检索' }));
+  await screen.findByText('找到 15 个案例');
+  expect(screen.getAllByRole('img')).toHaveLength(12);
+  fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+  expect(screen.getAllByRole('img')).toHaveLength(15);
+  expect(mocks.search).toHaveBeenCalledTimes(1);
+  expect(mocks.load).not.toHaveBeenCalled();
+  mocks.search.mockResolvedValueOnce([]);
+  fireEvent.click(screen.getByRole('button', { name: '检索' }));
+  await screen.findByText('暂无满足条件和相关性门槛的案例。');
+  expect(screen.queryByRole('img')).not.toBeInTheDocument();
 });

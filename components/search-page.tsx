@@ -1,72 +1,67 @@
 'use client';
-/* eslint-disable @next/next/no-img-element -- Existing API preview URLs serve originals without an image proxy. */
-import { useEffect, useRef, useState } from 'react';
+/* eslint-disable @next/next/no-img-element -- Existing API preview URLs. */
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { searchCases, type KnowledgeCase } from '@/lib/knowledge-api';
 import { WorkspacePage } from './workspace-navigation';
+import { CompareButton } from './case-compare';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 
+const pageSize = 12;
 export function SearchPage() {
-  const [mode, setMode] = useState<'structured' | 'semantic' | 'hybrid'>(
-    'structured',
-  );
   const [query, setQuery] = useState('');
   const [tags, setTags] = useState('');
   const [field, setField] = useState('');
   const [op, setOp] = useState('gte');
   const [value, setValue] = useState('');
+  const [threshold, setThreshold] = useState('0.3');
   const [items, setItems] = useState<KnowledgeCase[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [visible, setVisible] = useState(pageSize);
+  const [debug, setDebug] = useState<Record<string, unknown>>({});
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const request = useRef(0);
-  async function run(initial = false) {
+  async function run() {
     const version = ++request.current;
     setLoading(true);
     setError('');
     setItems([]);
-    setSelected([]);
+    setDebug({});
+    setVisible(pageSize);
+    setSearched(true);
     try {
-      const selectedMode = initial ? 'structured' : mode;
-      const filterTags = initial
-        ? []
-        : tags
-            .split(/[,，]/)
-            .map((t) => t.trim())
-            .filter(Boolean);
-      if (!initial && selectedMode === 'semantic' && !query.trim())
-        throw new Error('请输入语义查询');
       if (
-        !initial &&
-        selectedMode !== 'semantic' &&
         (field || value) &&
         (!field.trim() || !value.trim() || !Number.isFinite(Number(value)))
       )
         throw new Error('请填写完整的数值条件');
-      const numeric =
-        !initial && field.trim()
-          ? [
-              {
-                [selectedMode === 'structured' ? 'feature_ref' : 'field']:
-                  field.trim(),
-                op,
-                value: Number(value),
-              },
-            ]
-          : [];
-      const body =
-        selectedMode === 'semantic'
-          ? { query: query.trim(), limit: 20 }
-          : selectedMode === 'hybrid'
-            ? {
-                query: query.trim() || null,
-                tags: filterTags,
-                numeric_filters: numeric,
-                limit: 20,
-              }
-            : { tags: filterTags, numeric_filters: numeric };
-      const data = await searchCases(selectedMode, body);
+      if (
+        !threshold.trim() ||
+        !Number.isFinite(Number(threshold)) ||
+        Number(threshold) < -1 ||
+        Number(threshold) > 1
+      )
+        throw new Error('相似度门槛须在 -1 到 1 之间');
+      const data = await searchCases(
+        'hybrid',
+        {
+          query: query.trim() || null,
+          tags: tags
+            .split(/[,，]/)
+            .map((t) => t.trim())
+            .filter(Boolean),
+          numeric_filters: field.trim()
+            ? [{ field: field.trim(), op, value: Number(value) }]
+            : [],
+          limit: 50,
+          min_similarity: Number(threshold),
+        },
+        (filters) => {
+          if (version === request.current) setDebug(filters);
+        },
+      );
       if (version === request.current) setItems(data);
     } catch (reason) {
       if (version === request.current)
@@ -75,56 +70,41 @@ export function SearchPage() {
       if (version === request.current) setLoading(false);
     }
   }
-  useEffect(() => {
-    let active = true;
-    void searchCases('structured', { tags: [], numeric_filters: [] }).then(data => { if (active) setItems(data); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '加载失败'); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
   return (
     <WorkspacePage active="/search">
       <h1 className="text-2xl font-semibold">对比与检索</h1>
       <p className="text-sm text-muted-foreground">
-        检索已确认知识案例；选择两项并列比较已有摘要。结构化条件采用
-        AND，混合检索先过滤再按语义相似度排序。
+        描述想找的画面，检索已确认知识案例。最多返回 50 项，不用弱匹配补足数量。
       </p>
       <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
           void run();
         }}
       >
-        <label>
-          检索方式
-          <select
-            aria-label="检索方式"
-            className="block rounded border bg-background p-2"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as typeof mode)}
-          >
-            <option value="structured">结构化</option>
-            <option value="semantic">语义</option>
-            <option value="hybrid">混合</option>
-          </select>
-        </label>
-        {mode !== 'structured' && (
-          <label htmlFor="search-query">
-            查询
-            <Input
-              id="search-query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              maxLength={2000}
-            />
-          </label>
-        )}
-        {mode !== 'semantic' && (
-          <>
+        <div className="flex gap-3">
+          <Input
+            aria-label="查询"
+            placeholder="例如：电影感的小猫"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            maxLength={2000}
+          />
+          <Button type="submit" disabled={loading}>
+            检索
+          </Button>
+        </div>
+        <details>
+          <summary className="cursor-pointer">高级筛选</summary>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
             <label htmlFor="search-tags">
               标签（逗号分隔）
-              <Input id="search-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+              <Input
+                id="search-tags"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+              />
             </label>
             <label htmlFor="search-field">
               数值字段
@@ -132,16 +112,13 @@ export function SearchPage() {
                 id="search-field"
                 value={field}
                 onChange={(e) => setField(e.target.value)}
-                placeholder={
-                  mode === 'structured'
-                    ? 'feature:tonal_occupancy#/shadow_share'
-                    : 'shadow_occupancy'
-                }
+                placeholder="shadow_occupancy"
               />
             </label>
-            <label>
+            <label htmlFor="search-op">
               运算符
               <select
+                id="search-op"
                 className="block rounded border bg-background p-2"
                 value={op}
                 onChange={(e) => setOp(e.target.value)}
@@ -161,19 +138,46 @@ export function SearchPage() {
                 onChange={(e) => setValue(e.target.value)}
               />
             </label>
-          </>
-        )}
-        <Button type="submit" disabled={loading}>
-          检索
-        </Button>
+            <label htmlFor="search-threshold">
+              相似度门槛
+              <Input
+                id="search-threshold"
+                type="number"
+                min="-1"
+                max="1"
+                step="0.01"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            所有筛选条件同时满足；相似度门槛仅用于有描述文本的排序，不是正确率。
+          </p>
+        </details>
       </form>
       {loading && <output>正在检索…</output>}
       {error && (
         <p role="alert">检索失败：{error}。请检查条件或服务配置后重试。</p>
       )}
-      {!loading && !error && <p>找到 {items.length} 个案例</p>}
+      {!searched && <p>输入描述或设置筛选后开始检索。</p>}
+      {searched && !loading && !error && (
+        <>
+          <p>
+            {items.length
+              ? `找到 ${items.length} 个案例`
+              : '暂无满足条件和相关性门槛的案例。'}
+          </p>
+          <details>
+            <summary>检索调试信息</summary>
+            <pre className="whitespace-pre-wrap text-xs">
+              {JSON.stringify(debug, null, 2)}
+            </pre>
+          </details>
+        </>
+      )}
       <div className="columns-1 gap-4 sm:columns-2 xl:columns-3">
-        {items.map((item) => (
+        {items.slice(0, visible).map((item) => (
           <article
             key={item.result_id}
             className="mb-4 break-inside-avoid rounded-xl border border-white/10 p-4"
@@ -186,60 +190,36 @@ export function SearchPage() {
                 className="mb-3 h-auto w-full rounded-lg"
               />
             </Link>
-            <label className="mr-3">
-              <input
-                type="checkbox"
-                checked={selected.includes(item.result_id)}
-                disabled={
-                  selected.length === 2 && !selected.includes(item.result_id)
-                }
-                onChange={(e) =>
-                  setSelected((current) =>
-                    e.target.checked
-                      ? [...current, item.result_id]
-                      : current.filter((id) => id !== item.result_id),
-                  )
-                }
-              />{' '}
-              选择对比
-            </label>
-            <Link href={`/knowledge/${item.result_id}`} className="underline">
+            <CompareButton item={item} />
+            <Link
+              href={`/knowledge/${item.result_id}`}
+              className="ml-2 underline"
+            >
               {item.original_filename}
             </Link>
             <p>{item.preview_text}</p>
             <p>标签：{item.tags.join(' · ') || '暂无'}</p>
             {item.similarity != null && (
-              <p>余弦相似度：{item.similarity.toFixed(3)}（非正确率）</p>
+              <p>相似度：{item.similarity.toFixed(3)}（非正确率）</p>
             )}
             {item.matched_structured_conditions && (
-              <p>
-                匹配条件：{JSON.stringify(item.matched_structured_conditions)}
-              </p>
+              <details>
+                <summary>已应用条件</summary>
+                <p className="break-words text-xs">
+                  {JSON.stringify(item.matched_structured_conditions)}
+                </p>
+              </details>
             )}
           </article>
         ))}
       </div>
-      {selected.length > 0 && (
-        <section aria-label="案例对比" className="grid gap-3 md:grid-cols-2">
-          {items
-            .filter((item) => selected.includes(item.result_id))
-            .map((item) => (
-              <article
-                key={item.result_id}
-                className="rounded-xl border border-amber-300/20 p-4"
-              >
-                <h2>{item.original_filename}</h2>
-                <p>{item.preview_text}</p>
-                <p>{item.tags.join(' · ')}</p>
-                <Link
-                  href={`/knowledge/${item.result_id}`}
-                  className="underline"
-                >
-                  查看五维与人工审核详情
-                </Link>
-              </article>
-            ))}
-        </section>
+      {visible < items.length && (
+        <Button
+          variant="outline"
+          onClick={() => setVisible((count) => count + pageSize)}
+        >
+          加载更多
+        </Button>
       )}
     </WorkspacePage>
   );

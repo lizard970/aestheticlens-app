@@ -236,7 +236,8 @@ it('shows separated failure phases and blocks review of unsuccessful semantics',
 it('hides only requested navigation and accepts single/multiple files in order', async () => {
   render(<AestheticWorkspace />);
   const nav = screen.getByRole('navigation', { name: '主要功能' });
-  expect(within(nav).getAllByRole('link')).toHaveLength(4);
+  expect(within(nav).getAllByRole('link')).toHaveLength(3);
+  expect(within(nav).queryByText('审美档案')).not.toBeInTheDocument();
   expect(within(nav).getByRole('link', { name: '视觉知识库' })).toHaveAttribute(
     'href',
     '/knowledge',

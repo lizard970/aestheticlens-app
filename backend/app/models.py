@@ -185,6 +185,7 @@ class SemanticSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=2000)
     limit: int = Field(default=10, ge=1, le=50)
+    min_similarity: float = Field(default=0.3, ge=-1, le=1, allow_inf_nan=False)
 
     @field_validator("query")
     @classmethod
@@ -226,6 +227,7 @@ class HybridSearchRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     numeric_filters: list[HybridNumericFilter] = Field(default_factory=list)
     limit: int = Field(default=10, ge=1, le=50)
+    min_similarity: float = Field(default=0.3, ge=-1, le=1, allow_inf_nan=False)
 
     @field_validator("query")
     @classmethod
@@ -238,6 +240,7 @@ class HybridSearchRequest(BaseModel):
 class MatchedStructuredConditions(BaseModel):
     tags: list[str]
     numeric_filters: list[HybridNumericFilter]
+    entities: list[str] = Field(default_factory=list)
 
 
 class HybridSearchCase(BaseModel):

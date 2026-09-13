@@ -195,7 +195,8 @@ def semantic_search(query: SemanticSearchRequest):
 @app.post("/api/v1/search/hybrid")
 def hybrid_search(query: HybridSearchRequest):
     try:
-        return {"items": hybrid_search_service.search(query)}
+        debug = {}
+        return {"items": hybrid_search_service.search(query, debug), "applied_filters": debug}
     except EmbeddingError as exc:
         status_code = 503 if str(exc) == "SEMANTIC_SEARCH_NOT_CONFIGURED" else 502
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc

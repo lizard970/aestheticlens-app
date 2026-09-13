@@ -29,8 +29,9 @@ const provider = new ApiAnalysisProvider();
 export async function searchCases(
   mode: 'structured' | 'semantic' | 'hybrid',
   request: object,
+  onDebug?: (filters: Record<string, unknown>) => void,
 ): Promise<KnowledgeCase[]> {
-  const response = await jsonRequest<{ items: KnowledgeCase[] }>(
+  const response = await jsonRequest<{ items: KnowledgeCase[]; applied_filters?: Record<string, unknown> }>(
     `${API_BASE_URL}/search/${mode}`,
     {
       method: 'POST',
@@ -38,6 +39,7 @@ export async function searchCases(
       body: JSON.stringify(request),
     },
   );
+  onDebug?.(response.applied_filters ?? {});
   return response.items.map((item) => ({
     ...item,
     preview_url: new URL(item.preview_url, API_BASE_URL).href,
