@@ -42,3 +42,17 @@ next-env.d.ts
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Local-only private documents, launchers and model configuration
+/HANDOFF.md
+/aestheticlens_product_report_v0.1.md
+/aestheticlens_product_report_v0.2.md
+/AestheticLens 在线 Demo.url
+/启动本地 Demo.cmd
+/backend/config/semantic_prompt.json
+/backend/config/semantic_prompt_zero_shot.json
+/backend/config/semantic_reasoning_boundary.json
+/backend/config/style_vocabulary.json
+/AGENTS.md
+/exit
+/evaluation_dataset/
