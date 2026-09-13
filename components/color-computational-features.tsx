@@ -48,12 +48,16 @@ export function ColorComputationalFeatures({
   const occupancy = byCode.get('chromatic_occupancy');
   const hue = byCode.get('hue_distribution');
   const palette = byCode.get('dominant_palette');
+  const accent = byCode.get('accent_palette');
   const warmCool = byCode.get('warm_cool_distribution');
   const contrast = byCode.get('palette_color_contrast');
   const colorfulness = byCode.get('image_colorfulness');
 
   const colors = Array.isArray(palette?.values.colors)
     ? (palette.values.colors as Array<Record<string, unknown>>)
+    : [];
+  const accents = accent?.status === 'succeeded' && Array.isArray(accent.values.colors)
+    ? (accent.values.colors as Array<Record<string, unknown>>)
     : [];
 
   return (
@@ -122,18 +126,20 @@ export function ColorComputationalFeatures({
         />
       </div>
 
-      <article className="mt-4 rounded-lg border border-white/8 bg-black/15 p-3">
+      {[{ title: '主色板 · 面积排序', colors, empty: '暂无主色数据' },
+        { title: '强调色板 · 视觉强调排序', colors: accents, empty: !accent ? '此历史结果尚未提取强调色' : accent.status !== 'succeeded' ? '强调色提取未完成' : '未检出符合条件的小面积强调色' }].map(group => (
+      <article key={group.title} aria-label={group.title} className="mt-4 rounded-lg border border-white/8 bg-black/15 p-3">
         <p className="text-sm font-medium">
-          主色板
+          {group.title}
         </p>
 
-        {colors.length === 0 ? (
+        {group.colors.length === 0 ? (
           <p className="mt-3 text-xs text-muted-foreground">
-            暂无主色数据
+            {group.empty}
           </p>
         ) : (
           <div className="mt-3 flex flex-wrap gap-3">
-            {colors.map((color) => {
+            {group.colors.map((color) => {
               const hex = typeof color.hex_srgb === 'string'
                 ? color.hex_srgb
                 : '#000000';
@@ -163,6 +169,8 @@ export function ColorComputationalFeatures({
           </div>
         )}
       </article>
+      ))}
+      <p className="mt-2 text-xs text-muted-foreground">占比均相对整张分析图；强调色可同时出现在主色板中，不重复累计面积。</p>
     </section>
   );
 }

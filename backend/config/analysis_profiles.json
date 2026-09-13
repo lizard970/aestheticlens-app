@@ -71,6 +71,22 @@
         "max_iterations": 40
       },
 
+      "accent_palette": {
+        "version": "1.0.0",
+        "cluster_count": 8,
+        "sample_limit": 20000,
+        "random_seed": 7,
+        "max_iterations": 40,
+        "min_coverage": 0.001,
+        "max_coverage": 0.2,
+        "min_chroma": 20.0,
+        "min_delta_e2000": 10.0,
+        "deduplicate_delta_e2000": 8.0,
+        "coverage_support_reference": 0.04,
+        "saliency_weight": 0.5,
+        "max_colors": 3
+      },
+
       "warm_cool": {
         "warm_ranges_degrees": [
           [330.0, 360.0],

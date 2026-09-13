@@ -99,6 +99,7 @@ def test_hybrid_analysis_keeps_mock_contract_and_adds_real_features():
         "chromatic_occupancy",
         "hue_distribution",
         "dominant_palette",
+        "accent_palette",
         "warm_cool_distribution",
         "palette_color_contrast",
         "image_colorfulness",

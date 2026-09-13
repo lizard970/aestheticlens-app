@@ -430,6 +430,90 @@ class DominantPaletteExtractor(BaseExtractor):
         return _dominant_palette(image, config)
 
 
+class AccentPaletteExtractor(BaseExtractor):
+    code = "accent_palette"
+    method = "Chroma-conditioned CIELAB k-means candidates ranked by coverage, chroma, CIEDE2000 and spatial saliency"
+    standard = "CIELAB D65, CIEDE2000; configurable emphasis heuristic, not an aesthetic score"
+
+    def extract(self, image, config):
+        settings = config["color_analysis"]["accent_palette"]
+        output = {
+            "configuration_version": settings["version"],
+            "colors": [], "coverage": 0.0, "defined": False,
+            "saliency_available": False,
+            "interpretation_limit": "Chromatic emphasis candidates on the normalized raster; not semantic attention or calibrated probabilities",
+        }
+        flat_lab = image.lab.reshape(-1, 3)
+        # Sample the chromatic population separately so low-chroma backgrounds cannot
+        # consume every cluster. Coverage is still measured against ALL raster pixels.
+        chromatic = _lab_chroma(flat_lab) >= float(settings["min_chroma"])
+        candidates = flat_lab[chromatic]
+        if not len(candidates):
+            return output
+        limit = int(settings["sample_limit"])
+        sample = candidates[np.linspace(0, len(candidates) - 1, min(limit, len(candidates)), dtype=np.int64)]
+        unique = np.unique(sample, axis=0)
+        k = min(int(settings["cluster_count"]), len(unique))
+        centers = unique[:1] if k == 1 else kmeans2(
+            sample, k, iter=int(settings["max_iterations"]), minit="++",
+            rng=np.random.default_rng(int(settings["random_seed"])),
+        )[0]
+        labels, _ = vq(candidates, centers)
+        counts = np.bincount(labels, minlength=len(centers))
+        shares = counts / len(flat_lab)
+
+        dominant = _dominant_palette(image, config)["colors"]
+        if not dominant:
+            return output
+        # Compare against large-area context, not the accent's own dominant-palette
+        # entry. A 4% colour may legitimately occur in both output palettes.
+        background = [c["lab"] for c in dominant if c["share"] > float(settings["max_coverage"])]
+        reference = np.asarray(background or [dominant[0]["lab"]])
+
+        lifts = np.ones(len(centers))
+        if "composition_analysis" in config and "space_analysis" in config:
+            saliency = _composition_saliency(image, config)
+            mean = float(saliency.mean())
+            composition = config["composition_analysis"]
+            reliable = mean >= float(composition["saliency_signal_floor"]) and mean > 0 and float(saliency.max()) / mean >= float(composition["saliency_peak_to_mean_min"])
+            output["saliency_available"] = bool(reliable)
+            if reliable:
+                totals = np.bincount(labels, weights=saliency.ravel()[chromatic], minlength=len(centers))
+                lifts = totals / np.maximum(counts, 1) / mean
+
+        ranked = []
+        for index, center in enumerate(centers):
+            share = float(shares[index])
+            chroma = float(_lab_chroma(center))
+            distance = float(np.min(deltaE_ciede2000(center[None, :], reference)))
+            if not (float(settings["min_coverage"]) <= share <= float(settings["max_coverage"])) or chroma < float(settings["min_chroma"]) or distance < float(settings["min_delta_e2000"]):
+                continue
+            support = np.sqrt(min(share / float(settings["coverage_support_reference"]), 1.0))
+            chroma_strength = chroma / (chroma + float(settings["min_chroma"]))
+            contrast_strength = distance / (distance + float(settings["min_delta_e2000"]))
+            lift = float(lifts[index])
+            saliency_bonus = max(0.0, (lift - 1.0) / (lift + 1.0))
+            score = support * chroma_strength * contrast_strength * (1.0 + float(settings["saliency_weight"]) * saliency_bonus)
+            ranked.append({
+                "share": share, "coverage_percentage": share * 100.0,
+                "hex_srgb": _rgb_to_hex(lab2rgb(center.reshape(1, 1, 3), illuminant="D65", observer="2")[0, 0]),
+                "lab": center.tolist(), "lch": _lab_to_lch(center).tolist(),
+                "chroma": chroma, "contrast_delta_e2000": distance,
+                "saliency_lift": lift if output["saliency_available"] else None,
+                "accent_score": float(score),
+            })
+        ranked.sort(key=lambda c: (-c["accent_score"], -c["share"], c["hex_srgb"]))
+        for color in ranked:
+            if any(float(deltaE_ciede2000(np.asarray(color["lab"]), np.asarray(prior["lab"]))) < float(settings["deduplicate_delta_e2000"]) for prior in output["colors"]):
+                continue
+            output["colors"].append({"rank": len(output["colors"]) + 1, **color})
+            if len(output["colors"]) >= int(settings["max_colors"]):
+                break
+        output["coverage"] = sum(c["share"] for c in output["colors"])
+        output["defined"] = bool(output["colors"])
+        return output
+
+
 
 class WarmCoolDistributionExtractor(BaseExtractor):
     code = "warm_cool_distribution"
@@ -810,6 +894,17 @@ class SpaceStructureExtractor(BaseExtractor):
         }
 
 
+def _composition_saliency(image, config, maps=None):
+    """Shared existing luminance-gradient/texture proxy; no semantic saliency model."""
+    settings = config["composition_analysis"]
+    maps = _spatial_maps(image, config) if maps is None else maps
+    saliency = (np.asarray(maps["gradient"]) * float(settings["saliency_gradient_weight"])
+                + np.asarray(maps["local_std"]) * float(settings["saliency_texture_weight"]))
+    sigma = max(float(config["space_analysis"]["minimum_sigma_pixels"]),
+                float(settings["saliency_smoothing_fraction"]) * min(image.width, image.height))
+    return gaussian_filter(saliency, sigma=sigma, mode=config["space_analysis"]["boundary_mode"])
+
+
 class CompositionGeometryExtractor(BaseExtractor):
     code = "composition_geometry"
     method = "Gradient/texture saliency centroid, low-information occupancy, and mirror similarity"
@@ -818,22 +913,7 @@ class CompositionGeometryExtractor(BaseExtractor):
     def extract(self, image, config):
         settings = config["composition_analysis"]
         maps = _spatial_maps(image, config)
-        saliency = (
-            np.asarray(maps["gradient"])
-            * float(settings["saliency_gradient_weight"])
-            + np.asarray(maps["local_std"])
-            * float(settings["saliency_texture_weight"])
-        )
-        sigma = max(
-            float(config["space_analysis"]["minimum_sigma_pixels"]),
-            float(settings["saliency_smoothing_fraction"])
-            * min(image.width, image.height),
-        )
-        saliency = gaussian_filter(
-            saliency,
-            sigma=sigma,
-            mode=config["space_analysis"]["boundary_mode"],
-        )
+        saliency = _composition_saliency(image, config, maps)
         saliency_total = float(np.sum(saliency))
         saliency_mean = float(np.mean(saliency))
         peak_to_mean = (
@@ -1056,6 +1136,7 @@ class ExtractorRegistry:
             ChromaticOccupancyExtractor(),
             HueDistributionExtractor(),
             DominantPaletteExtractor(),
+            AccentPaletteExtractor(),
             WarmCoolDistributionExtractor(),
             PaletteColorContrastExtractor(),
             ColorfulnessExtractor(),
